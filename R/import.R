@@ -1,0 +1,230 @@
+
+.get_dir <- function() {
+  getOption('bdb2021.dir')
+}
+
+#' Import position categorization data
+#'
+#' @description Useful for \code{side} column (either \code{"O"} or \code{"D"})
+#' @seealso \url{https://github.com/leesharpe/nfldata/blob/master/data/positions.csv}
+#' @examples
+#' \dontrun{
+#' import_positions()
+#' }
+import_positions <- memoise::memoise({function(dir = .get_dir()) {
+  path <- file.path(dir, 'positions.csv')
+  positions <-
+    path %>%
+    vroom::vroom(
+      skip = 1L,
+      progress = FALSE,
+      col_names = c('side', 'position_category', 'position_label', 'position'),
+      col_types = vroom::cols(
+        .default = vroom::col_character()
+      )
+    )
+  positions
+}})
+
+#' Import tracking data for a given week
+#'
+#' @description In addition to importing tracking data, moves \code{"Football"}
+#' rows to columns \code{ball_x} and \code{ball_y} and adds \code{side}
+#' column using \code{positions} data. If \code{standardize = TRUE},
+#' then \code{los} column is also added.
+#' @param week Number between 1 and 17
+#' @param positions Positions data for adding \code{side} column
+#' @param standardize Boolean. Whether to \code{x} and \code{y} based on line of scrimmage (\code{los}) and \code{play_direction}. Note that \code{los} column
+#' is added if TRUE.
+#' @examples
+#' \dontrun{
+#' import_week(1)
+#' }
+import_week <- function(week, positions = import_positions(), standardize = TRUE, dir = .get_dir()) {
+  path <- file.path(dir, sprintf('week%d.csv', week))
+  tracking <-
+    path %>%
+    vroom::vroom(
+      # skip = 1L,
+      progress = FALSE,
+      col_names = c('time', 'x', 'y', 's', 'a', 'dis', 'o', 'dir', 'event', 'nfl_id', 'display_name', 'jersey_number', 'position', 'frame_id', 'team', 'game_id', 'play_id', 'play_direction', 'route'),
+      col_types = vroom::cols(
+        time = vroom::col_datetime(format = ''),
+        x = vroom::col_double(),
+        y = vroom::col_double(),
+        s = vroom::col_double(),
+        a = vroom::col_double(),
+        dis = vroom::col_double(),
+        o = vroom::col_double(),
+        dir = vroom::col_double(),
+        event = vroom::col_character(),
+        nfl_id = vroom::col_integer(),
+        display_name = vroom::col_character(),
+        jersey_number = vroom::col_integer(),
+        position = vroom::col_character(),
+        frame_id = vroom::col_integer(),
+        team = vroom::col_character(),
+        game_id = vroom::col_integer(),
+        play_id = vroom::col_integer(),
+        play_direction = vroom::col_character(),
+        route = vroom::col_character()
+      )
+    )
+  tracking <- tracking[-1, ]
+
+  tracking <-
+    tracking %>%
+    dplyr::left_join(
+      positions %>%
+        dplyr::select(.data$position, .data$side),
+      by = 'position'
+    )
+
+  ball <- tracking %>% dplyr::filter(display_name == 'Football')
+
+  tracking <- tracking %>% dplyr::filter(display_name != 'Football')
+
+  tracking <-
+    tracking %>%
+    dplyr::inner_join(
+      ball %>%
+        dplyr::select(game_id, play_id, frame_id, ball_x = x, ball_y = y),
+      by = c('frame_id', 'game_id', 'play_id')
+    )
+  tracking
+
+  if(!standardize) {
+    return(tracking)
+  }
+
+  line_of_scrimmage <-
+    tracking %>%
+    dplyr::filter(.data$event == 'ball_snap') %>%
+    dplyr::group_by(.data$game_id, .data$play_id) %>%
+    dplyr::filter(dplyr::row_number() == 1L) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(.data$game_id, .data$play_id, los = .data$ball_x) %>%
+    dplyr::ungroup()
+
+  x_max <- 120
+  y_max <- 160 / 3
+  tracking <-
+    tracking %>%
+    dplyr::left_join(line_of_scrimmage, by = c('game_id', 'play_id')) %>%
+    dplyr::mutate(
+      dplyr::across(c(.data$x, .data$ball_x, .data$los), ~ dplyr::if_else(.data$play_direction == 'left', !!x_max - .x, .x)),
+      # Standardizing the x direction based on the los is best for doing general analysis,
+      # but perhaps not for plotting.
+      # across(c(x, ball_x), ~.x - los),
+      dplyr::across(c(.data$y, .data$ball_y), ~ dplyr::if_else(.data$play_direction == 'left', !!y_max - .x, .x))
+    )
+  tracking
+}
+
+#' Import games data
+#'
+#' @examples
+#' \dontrun{
+#' import_games()
+#' }
+import_games <- memoise::memoise({function(dir = .get_dir()) {
+  path <- file.path(dir, 'games.csv')
+  games <-
+    path %>%
+    vroom::vroom(
+      skip = 1L,
+      progress = FALSE,
+      col_names = c('game_id', 'game_date', 'game_time_est', 'home_team_abbr', 'away_team_abbr', 'week'),
+      col_types = vroom::cols(
+        game_id = vroom::col_integer(),
+        game_date = vroom::col_date(format = '%m/%d/%Y'),
+        game_time_est = vroom::col_character(), # time(format = ''),
+        home_team_abbr = vroom::col_character(),
+        away_team_abbr = vroom::col_character(),
+        week = vroom::col_integer()
+      )
+    )
+  games
+}})
+
+#' Import players data
+#'
+#' @examples
+#' \dontrun{
+#' import_players()
+#' }
+import_players <- memoise::memoise({function(dir = .get_dir()) {
+  path <- file.path(dir, 'players.csv')
+  # TODO: dob needs some fixinig
+  players <-
+    path %>%
+    vroom::vroom(
+      skip = 1L,
+      progress = FALSE,
+      col_names = c('nfl_id', 'height', 'weight', 'dob', 'college', 'position', 'display_name'),
+      col_types = vroom::cols(
+        .default = vroom::col_character(),
+        nfl_id = vroom::col_integer(),
+        weight = vroom::col_integer()
+      )
+    ) # %>%
+    # dplyr::select(.data$nfl_id, .data$display_name, .data$position)
+  players
+}})
+
+
+#' Import plays data
+#'
+#' @examples
+#' \dontrun{
+#' import_plays()
+#' }
+import_plays <- memoise::memoise({function(dir = .get_dir()) {
+  path <- file.path(dir, 'plays.csv')
+  plays <-
+    path %>%
+    vroom::vroom(
+      skip = 1L,
+      progress = FALSE,
+      col_names = c('game_id', 'play_id', 'play_description', 'quarter', 'down', 'yards_to_go', 'possession_team', 'play_type', 'yardline_side', 'yardline_number', 'offense_formation', 'personnel_o', 'defenders_in_the_box', 'number_of_pass_rushers', 'personnel_d', 'type_dropback', 'pre_snap_visitor_score', 'pre_snap_home_score', 'game_clock', 'absolute_yardline_number', 'penalty_codes', 'penalty_jersey_numbers', 'pass_result', 'offense_play_result', 'play_result', 'epa', 'is_defensive_pi'),
+      col_types = vroom::cols(
+        .default = vroom::col_integer(),
+        yards_to_go = vroom::col_integer(),
+        play_description = vroom::col_character(),
+        possession_team = vroom::col_character(),
+        play_type = vroom::col_character(),
+        yardline_side = vroom::col_character(),
+        offense_formation = vroom::col_character(),
+        personnel_o = vroom::col_character(),
+        personnel_d = vroom::col_character(),
+        type_dropback = vroom::col_character(),
+        game_clock = vroom::col_time(format = ''),
+        penalty_codes = vroom::col_character(),
+        penalty_jersey_numbers = vroom::col_character(),
+        pass_result = vroom::col_character(),
+        epa = vroom::col_double(),
+        is_defensive_pi = vroom::col_logical()
+      )
+    )
+  path <- file.path(dir, 'targetedReciever.csv')
+  target <-
+    path %>%
+    vroom::vroom(
+      skip = 1L,
+      progress = FALSE,
+      col_names = c('game_id', 'play_id', 'target_nfl_id'),
+      col_types = vroom::cols(
+        .default = vroom::col_integer()
+      )
+    )
+  plays <-
+    plays %>%
+    dplyr::inner_join(target, by = c('game_id', 'play_id'))
+  plays
+}})
+
+import_nflfastr_pbp <- memoise::memoise({function(season = 2018) {
+  sprintf('https://raw.githubusercontent.com/guga31bb/nflfastR-data/master/data/play_by_play_%s.rds', season) %>%
+    url() %>%
+    readr::read_rds()
+}})
