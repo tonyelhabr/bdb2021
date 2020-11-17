@@ -1,7 +1,8 @@
 
-.switch_events_end <- function(x) {
+.switch_events_end <- function(at = c('throw', 'end_routes', 'end_rush')) {
+  at <- match.arg(at)
   switch(
-    x,
+    at,
     throw = c(
       'pass_forward',
       'pass_shovel'
@@ -14,6 +15,13 @@
       'pass_outcome_touchdown',
       'qb_strip_sack',
       'qb_spike'
+    ),
+    end_rush = c(
+      'pass_forward',
+      'pass_shovel',
+      'qb_sack',
+      'qb_strip_sack',
+      'qb_spike'
     )
   )
 }
@@ -23,10 +31,8 @@
 # An alternate `init_cnd` might be `quos(frame_id == 1)`. (You don't technically need to use `quos()` if it's just one condition; just `quo()` would suffice.) A base R alternative to the `quos()`-`!!!` combo would be `expr()`-`eval()`.
 clip_tracking_at_events <-
   function(tracking,
-           at = c('throw', 'end_routes'),
-           events = switch_events_end(at),
+           at = 'throw',
            init_cnd = dplyr::quos(.data$event == 'ball_snap')) {
-    at <- match.arg(at)
     events <- .switch_events_end(at)
     assertthat::assert_that(rlang::is_quosures(init_cnd))
     tracking %>%

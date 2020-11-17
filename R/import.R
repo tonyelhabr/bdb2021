@@ -6,6 +6,10 @@
 #' Import position categorization data
 #'
 #' @description Useful for \code{side} column (either \code{"O"} or \code{"D"})
+#' @param dir Directory where file is stored, which is dependent on whether
+#' the code is run locally or on Kaggle.
+#' Best to change with \code{options(bdb2021.dir = <dir>)} so that other \code{import_}
+#' functions have the same change.
 #' @seealso \url{https://github.com/leesharpe/nfldata/blob/master/data/positions.csv}
 #' @examples
 #' \dontrun{
@@ -26,6 +30,29 @@ import_positions <- memoise::memoise({function(dir = .get_dir()) {
   positions
 }})
 
+#' Import team colors data
+#'
+#' @inheritParams import_positions
+#' @seealso \url{https://github.com/leesharpe/nfldata/blob/master/data/teamcolors.csv}
+#' @examples
+#' \dontrun{
+#' import_colors()
+#' }
+import_colors <- memoise::memoise({function(dir = .get_dir()) {
+  path <- file.path(dir, 'teamcolors.csv')
+  colors <-
+    path %>%
+    vroom::vroom(
+      skip = 1L,
+      progress = FALSE,
+      col_names = c('team', 'color', sprintf('color%s', 2:4)),
+      col_types = vroom::cols(
+        .default = vroom::col_character()
+      )
+    )
+  colors
+}})
+
 #' Import tracking data for a given week
 #'
 #' @description In addition to importing tracking data, moves \code{"Football"}
@@ -36,6 +63,7 @@ import_positions <- memoise::memoise({function(dir = .get_dir()) {
 #' @param positions Positions data for adding \code{side} column
 #' @param standardize Boolean. Whether to \code{x} and \code{y} based on line of scrimmage (\code{los}) and \code{play_direction}. Note that \code{los} column
 #' is added if TRUE.
+#' @inheritParams import_positions
 #' @examples
 #' \dontrun{
 #' import_week(1)
@@ -123,6 +151,7 @@ import_week <- function(week, positions = import_positions(), standardize = TRUE
 
 #' Import games data
 #'
+#' @inheritParams import_positions
 #' @examples
 #' \dontrun{
 #' import_games()
@@ -134,13 +163,13 @@ import_games <- memoise::memoise({function(dir = .get_dir()) {
     vroom::vroom(
       skip = 1L,
       progress = FALSE,
-      col_names = c('game_id', 'game_date', 'game_time_est', 'home_team_abbr', 'away_team_abbr', 'week'),
+      col_names = c('game_id', 'game_date', 'game_time_eastern', 'home_team_abbr', 'visitor_team_abbr', 'week'),
       col_types = vroom::cols(
         game_id = vroom::col_integer(),
         game_date = vroom::col_date(format = '%m/%d/%Y'),
-        game_time_est = vroom::col_character(), # time(format = ''),
+        game_time_eastern = vroom::col_character(), # time(format = ''),
         home_team_abbr = vroom::col_character(),
-        away_team_abbr = vroom::col_character(),
+        visitor_team_abbr = vroom::col_character(),
         week = vroom::col_integer()
       )
     )
@@ -149,6 +178,7 @@ import_games <- memoise::memoise({function(dir = .get_dir()) {
 
 #' Import players data
 #'
+#' @inheritParams import_positions
 #' @examples
 #' \dontrun{
 #' import_players()
@@ -175,6 +205,7 @@ import_players <- memoise::memoise({function(dir = .get_dir()) {
 
 #' Import plays data
 #'
+#' @inheritParams import_positions
 #' @examples
 #' \dontrun{
 #' import_plays()
@@ -223,6 +254,14 @@ import_plays <- memoise::memoise({function(dir = .get_dir()) {
   plays
 }})
 
+#' Import \code{nflfastR} play-by-play data
+#'
+#' @param season 2018 by default.
+#'
+#' @examples
+#' \dontrun{
+#' import_nflfastr_pbp()
+#' }
 import_nflfastr_pbp <- memoise::memoise({function(season = 2018) {
   sprintf('https://raw.githubusercontent.com/guga31bb/nflfastR-data/master/data/play_by_play_%s.rds', season) %>%
     url() %>%

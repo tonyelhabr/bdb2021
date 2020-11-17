@@ -3,11 +3,11 @@
 # games <- bdb2021::import_games()
 # plays <- bdb2021::import_plays()
 
-identify_intersection_possibly <- purrr::possibly(bdb2021::identify_intersection, otherwise = NULL)
+identify_intersection_possibly <- purrr::possibly(:identify_intersection, otherwise = NULL)
 
-identify_intersections_until <- function(data, sec = 0.5, .verbose = bdb2021:::.get_verbose()) {
+identify_intersections_until <- function(data, sec = 0.5, .verbose = .get_verbose()) {
 
-  bdb2021:::.display_info('Identifying intersections up through {sec} seconds at {Sys.time()}.', .verbose = .verbose)
+  .display_info('Identifying intersections up through {sec} seconds at {Sys.time()}.', .verbose = .verbose)
 
   intersections_init <-
     data %>%
@@ -58,43 +58,12 @@ identify_intersections_until <- function(data, sec = 0.5, .verbose = bdb2021:::.
   res
 }
 
-do_identify_receiver_intersections <- function(week, ..., n_halfseconds = 7L, .verbose = bdb2021:::.get_verbose()) {
+do_identify_receiver_intersections <- function(..., .verbose = bdb2021:::.get_verbose()) {
 
-  bdb2021:::.display_info('Identifying intersections for week {week} at {Sys.time()}.', .verbose = .verbose)
+  frames <- prep_do_by_week(.verbose = .verbose, .msg = 'Identifying closest receivers', ...)
 
-  tracking <- week %>% bdb2021::import_week()
-  tracking <- tracking %>% bdb2021::add_side_cols()
-
-  tracking_at_throw <- tracking %>% bdb2021::clip_tracking_at_events('throw')
-
-  snap_frames <- tracking %>% dplyr::filter(.data$event == 'ball_snap')
-
-  snap_frame_ids <- snap_frames %>% dplyr::distinct(game_id, play_id, frame_id)
-  seconds_frames <-
-    snap_frame_ids %>%
-    # Only need up to 0.5 * `n_nalfseconds` seconds (e.g. 0, 0.5, 1, ..., 3.5 if `n_halfseconds = 7L`).
-    dplyr::mutate(n = !!n_halfseconds) %>%
-    tidyr::uncount(.data$n) %>%
-    dplyr::group_by(.data$game_id, .data$play_id) %>%
-    # Create half seconds.
-    dplyr::mutate(
-      sec = 0.5 * (dplyr::row_number() - 1L)
-    ) %>%
-    dplyr::ungroup() %>%
-    # Technically this should be an integer, but we don't really need to coerce it.
-    dplyr::mutate(
-      frame_id = .data$frame_id + .data$sec * 10,
-    ) %>%
-    dplyr::inner_join(
-      tracking_at_throw %>%
-        dplyr::select(-.data$event),
-      by = c('frame_id', 'game_id', 'play_id')
-    )
-
-  receivers_at_snap <- snap_frames %>% bdb2021::add_idx_y_col()
-
-  receivers_at_seconds <-
-    seconds_frames %>%
+  receivers <-
+    frames %>%
     # Use the `y_side` from the snap time, not at a given seconds' time.
     dplyr::select(-.data$x_side, -.data$y_side) %>%
     dplyr::inner_join(
@@ -120,7 +89,7 @@ do_identify_receiver_intersections <- function(week, ..., n_halfseconds = 7L, .v
         purrr::map(
           .data$sec,
           ~identify_intersections_until(
-            receivers_at_seconds,
+            receivers,
             sec = .x,
             .verbose = .verbose
           )
@@ -130,11 +99,10 @@ do_identify_receiver_intersections <- function(week, ..., n_halfseconds = 7L, .v
   intersections
 }
 
-# weeks <- 1L:17L
-weeks <- 1L
+weeks <- 1L:17L
+# weeks <- 1L
 receiver_intersections_relaxed <-
   tibble::tibble(week = !!weeks) %>%
   dplyr::mutate(data = purrr::map(.data$week, do_identify_receiver_intersections))
-receiver_intersections
 
 usethis::use_data(receiver_intersections_relaxed, overwrite = TRUE)

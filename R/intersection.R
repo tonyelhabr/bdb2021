@@ -18,12 +18,13 @@ identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
   if(pad_backwards) {
     first_x <-
       data %>%
-      dplyr::group_by(nfl_id) %>%
-      dplyr::mutate(x = dplyr::first(x)) %>%
-      dplyr::ungroup()
+      dplyr::filter(frame_id == min(frame_id))
     padded_x <-
       first_x %>%
-      dplyr::mutate(x = x - !!pad_x)
+      dplyr::mutate(
+        frame_id = frame_id - 5L,
+        x = x - !!pad_x
+      )
     data <-
       dplyr::bind_rows(padded_x, data)
   }

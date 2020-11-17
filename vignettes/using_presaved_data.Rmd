@@ -21,18 +21,21 @@ library(tidyverse)
 
 ```{r}
 data('receiver_intersections', package = 'bdb2021')
+# data('pick_play_relaxed', package = 'bdb2021')
 
-receiver_intersections_unnested <-
+pick_plays <-
   receiver_intersections %>%
   unnest(data)
-receiver_intersections_unnested
+pick_plays
+
+pick_plays %>% filter(has_intersection)
 ```
 
 Adjust seconds so that pick plays are more correctly categorized---by half second split and not "up until x seconds".
 
 ```{r}
-receiver_intersections_ids_adj <-
-  receiver_intersections_unnested %>%
+pick_play_ids_adj <-
+  pick_plays %>%
   filter(has_intersection) %>%
   dplyr::select(
     .data$week,
@@ -50,29 +53,26 @@ receiver_intersections_ids_adj <-
   mutate(sec_start = .data$sec_end - 0.5) %>% 
   relocate(.data$sec_start, .data$sec_end, .after = dplyr::last_col()) %>% 
   arrange(.data$week, .data$game_id, .data$play_id, .data$sec_start, .data$y_side_init)
+pick_play_ids_adj
 ```
 
 Let's try to answer the question "Did pick plays have higher EPA when one of the intersection receivers was targeted?"
 
 ```{r}
 plays <- import_plays()
+pbp <- 
+  import_nflfastr_pbp() %>% 
+  select(game_id = old_game_id, play_id, wpa, epa) %>% 
+  mutate(across(c(game_id, play_id), as.integer))
 
-x <-
-  receiver_intersections_unnested %>% 
-  filter(has_intersection) %>% 
-  unnest(intersection) %>% 
-  distinct(game_id, play_id, y_side_init) 
-x
-y <- receiver_intersections_ids_adj %>% distinct(game_id, play_id, y_side_init)
-y
-receiver_intersections_meta <-
-  receiver_intersections_unnested %>% 
+pick_play_meta <-
+  pick_plays %>% 
   filter(has_intersection) %>% 
   unnest(intersection) %>% 
   distinct(game_id, play_id, sec_end = sec, y_side_init, nfl_id) %>% 
   # Data should be dropped with this join because we are only joining on one `sec` interval per play and `y_side`.
   inner_join(
-    receiver_intersections_ids_adj,
+    pick_play_ids_adj,
     by = c('game_id', 'play_id', 'y_side_init', 'sec_end')
   ) %>% 
   relocate(.data$sec_start, .data$sec_end, .after = dplyr::last_col()) %>% 
@@ -94,13 +94,16 @@ receiver_intersections_meta <-
     plays %>% 
       select(game_id, play_id, pass_result, epa, possession_team, quarter, down, yards_to_go), 
     by = c('game_id', 'play_id')
+  ) %>% 
+  left_join(
+    pbp %>% rename(wpa_nflfastr = wpa, epa_nflfastr = epa),
+    by = c('game_id', 'play_id')
   )
-receiver_intersections_meta
-nflfastr_pdp <- import_nflfastr_pdp()
+pick_play_meta
 ```
 
 ```{r}
-receiver_intersections_meta %>% 
+pick_play_meta %>% 
   # Drop the plays where the targeted receiver is NA.
   drop_na() %>% 
   # mutate(across(pass_result, ~if_else(.x, != 'C', 'I', .x))) %>% 
@@ -110,18 +113,17 @@ receiver_intersections_meta %>%
   mutate(frac = n / sum(n)) %>% 
   ungroup()
 
-receiver_intersections_meta %>% 
+pick_play_meta %>% 
   # Drop the plays where the targeted receiver is NA.
   drop_na() %>% 
-  # mutate(across(pass_result, ~if_else(.x, != 'C', 'I', .x))) %>% 
-  group_by(target_is_intersect, sec, pass_result) %>% 
+  mutate(across(pass_result, ~if_else(.x != 'C', 'I', .x))) %>% 
+  group_by(target_is_intersect, sec_start, sec_end, pass_result) %>% 
   summarize(
     n = n(),
-    across(epa, mean)
+    across(c(ends_with('_nflfastr'), epa), mean)
   ) %>% 
   ungroup() %>% 
-  filter(pass_result == 'C') %>% 
-  group_by(target_is_intersect, sec) %>% 
+  group_by(target_is_intersect, sec_start, sec_end) %>% 
   mutate(frac = n / sum(n)) %>% 
   ungroup()
 
@@ -129,13 +131,13 @@ receiver_intersections_meta %>%
 
 ```{r}
 
-receiver_intersections_ids_adj
-receiver_intersections_unnested %>% filter(sec == max(sec))
+pick_play_ids_adj
+pick_plays %>% filter(sec == max(sec))
 # No adjusted intersections between 3 and 3.5 seconds.
-receiver_intersections_ids_adj %>% filter(sec_end == max(sec_end))
+pick_play_ids_adj %>% filter(sec_end == max(sec_end))
 
-receiver_intersections_n <-
-  receiver_intersections_ids_adj %>% 
+pick_play_n <-
+  pick_play_ids_adj %>% 
   inner_join(plays %>% select(game_id, play_id, epa)) %>% 
   group_by(.data$week, .data$sec_start, .data$sec_end) %>%
   summarize(
@@ -156,11 +158,11 @@ receiver_intersections_n <-
     across(starts_with('epa'), mean)
   ) %>% 
   ungroup()
-receiver_intersections_n
-receiver_intersections_unnested %>% count(game_id, play_id, sort = TRUE)
+pick_play_n
+pick_plays %>% count(game_id, play_id, sort = TRUE)
 
 normal_play_ids <-
-  receiver_intersections_unnested %>% 
+  pick_plays %>% 
   filter(!has_intersection) %>% 
   distinct(week, game_id, play_id, y_side_init, n_route)
 normal_play_ids
@@ -179,6 +181,6 @@ normal_plays_agg
 Who ran the most pick plays? (TODO: Add seconds grouping here.)
 
 ```{r}
-receiver_intersections_meta %>% 
+pick_play_meta %>% 
   count(team = possession_team, sort = TRUE)
 ```

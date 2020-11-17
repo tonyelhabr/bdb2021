@@ -1,0 +1,212 @@
+---
+title: 'Using presaved data'
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{using_presaved_data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(bdb2021)
+library(tidyverse)
+```
+
+```{r}
+data('receiver_intersections', package = 'bdb2021')
+data('receiver_intersections_relaxed', package = 'bdb2021')
+
+pick_plays <-
+  receiver_intersections %>%
+  unnest(data)
+pick_plays
+
+pick_plays_relaxed <-
+  receiver_intersections_relaxed %>%
+  unnest(data)
+pick_plays_relaxed
+
+pick_plays %>% filter(has_intersection)
+pick_plays_relaxed %>% filter(has_intersection)
+```
+
+Adjust seconds so that pick plays are more correctly categorized---by half second split and not "up until x seconds".
+
+```{r}
+pick_play_ids_adj <-
+  pick_plays_relaxed %>%
+  filter(has_intersection) %>%
+  unnest(intersection) %>% 
+  filter(nfl_id < nfl_id_intersect) %>% 
+  dplyr::select(
+    .data$week,
+    .data$game_id,
+    .data$play_id,
+    .data$n_route,
+    .data$n_intersection,
+    nfl_id,
+    nfl_id_intersect,
+    .data$sec
+  ) %>%
+  dplyr::group_by(.data$game_id, .data$play_id, nfl_id, nfl_id_intersect) %>%
+  dplyr::filter(.data$sec == min(.data$sec)) %>%
+  dplyr::ungroup() %>%
+  rename(sec_end = .data$sec) %>% 
+  mutate(sec_start = .data$sec_end - 0.5) %>% 
+  relocate(.data$sec_start, .data$sec_end, .after = dplyr::last_col()) %>% 
+  arrange(.data$week, .data$game_id, .data$play_id, .data$sec_start, nfl_id, nfl_id_intersect)
+pick_play_ids_adj
+```
+
+Let's try to answer the question "Did pick plays have higher EPA when one of the intersection receivers was targeted?"
+
+```{r}
+plays <- import_plays()
+pbp <- 
+  import_nflfastr_pbp() %>% 
+  select(game_id = old_game_id, play_id, wpa, epa) %>% 
+  mutate(across(c(game_id, play_id), as.integer))
+
+pick_play_meta <-
+  pick_plays %>% 
+  filter(has_intersection) %>% 
+  unnest(intersection) %>% 
+  distinct(week, game_id, play_id, sec_end = sec, nfl_id, nfl_id_intersect) %>% 
+  # Data should be dropped with this join because we are only joining on one `sec` interval per play and `y_side`.
+  inner_join(
+    pick_play_ids_adj,
+    by = c('game_id', 'play_id', 'nfl_id', 'nfl_id_intersect', 'sec_end')
+  ) %>% 
+  relocate(.data$sec_start, .data$sec_end, .after = dplyr::last_col()) %>% 
+  # Just get the `target_nfl_id` first.
+  inner_join(
+    plays %>% 
+      select(game_id, play_id, target_nfl_id), 
+    by = c('game_id', 'play_id')
+  ) %>% 
+  group_by(game_id, play_id, nfl_id, nfl_id_intersect, sec_start, sec_end) %>% 
+  # There will be some NAs here due to missing `target_nfl_id`s.
+  # I think it's best to leave these in.
+  summarize(
+    target_is_intersect = sum(target_nfl_id == nfl_id)
+  ) %>% 
+  ungroup() %>% 
+  # Now get other numbers from `plays`.
+  inner_join(
+    plays %>% 
+      select(game_id, play_id, pass_result, epa, possession_team, quarter, down, yards_to_go), 
+    by = c('game_id', 'play_id')
+  ) %>% 
+  left_join(
+    pbp %>% rename(wpa_nflfastr = wpa, epa_nflfastr = epa),
+    by = c('game_id', 'play_id')
+  )
+pick_play_meta
+```
+
+```{r}
+pick_play_meta %>% 
+  # Drop the plays where the targeted receiver is NA.
+  drop_na() %>% 
+  # mutate(across(pass_result, ~if_else(.x, != 'C', 'I', .x))) %>% 
+  count(target_is_intersect, sec_start, sec_end, pass_result) %>% 
+  filter(pass_result == 'C') %>% 
+  group_by(target_is_intersect) %>% 
+  mutate(frac = n / sum(n)) %>% 
+  ungroup()
+
+pick_play_agg <-
+  pick_play_meta %>% 
+  # Drop the plays where the targeted receiver is NA.
+  drop_na() %>% 
+  mutate(across(pass_result, ~if_else(.x != 'C', 'I', .x))) %>% 
+  group_by(target_is_intersect, sec_start, sec_end, pass_result) %>% 
+  summarize(
+    n = n(),
+    across(c(ends_with('_nflfastr'), epa), mean)
+  ) %>% 
+  ungroup() # %>% 
+  # group_by(target_is_intersect, sec_start, sec_end) %>% 
+  # mutate(frac = n / sum(n)) %>% 
+  # ungroup()
+pick_play_agg
+
+viz <-
+  pick_play_agg %>% 
+  unite(sec_bin, sec_start, sec_end, sep = '-') %>% 
+  mutate(
+    across(target_is_intersect, ~if_else(.x == 0, 'no', 'yes') %>% factor())
+  ) %>% 
+  pivot_longer(-c(target_is_intersect, sec_bin, pass_result)) %>% 
+  ggplot() +
+  aes(x = sec_bin, y = value) +
+  geom_col(aes(group = target_is_intersect, fill = target_is_intersect), position = 'dodge') +
+  facet_grid(name~pass_result, scales = 'free_y') +
+  theme_minimal() +
+  theme(legend.position = 'top') +
+  labs(x = NULL, y = NULL)
+viz
+```
+
+```{r}
+
+pick_play_ids_adj
+pick_plays %>% filter(sec == max(sec))
+# No adjusted intersections between 3 and 3.5 seconds.
+pick_play_ids_adj %>% filter(sec_end == max(sec_end))
+
+pick_play_n <-
+  pick_play_ids_adj %>% 
+  inner_join(plays %>% select(game_id, play_id, epa)) %>% 
+  group_by(.data$week, .data$sec_start, .data$sec_end) %>%
+  summarize(
+    across(.data$n_intersection, sum),
+    across(.data$epa, mean)
+  ) %>% 
+  ungroup() %>% 
+  arrange(.data$week, .data$sec_start, .data$sec_end) %>% 
+  group_by(.data$week) %>% 
+  mutate(
+    across(.data$n_intersection, list(cumu = cumsum)),
+    across(.data$epa, list(cumu = cummean))
+  ) %>% 
+  ungroup() %>% 
+  group_by(.data$sec_start, .data$sec_end) %>% 
+  summarize(
+    across(starts_with('n_intersection'), sum),
+    across(starts_with('epa'), mean)
+  ) %>% 
+  ungroup()
+pick_play_n
+pick_plays %>% count(game_id, play_id, sort = TRUE)
+
+normal_play_ids <-
+  pick_plays %>% 
+  filter(!has_intersection) %>% 
+  distinct(week, game_id, play_id, y_side_init, n_route)
+normal_play_ids
+
+normal_plays_agg <-
+  normal_play_ids %>% 
+  inner_join(plays %>% select(game_id, play_id, epa)) %>% 
+  summarize(
+    n = n(),
+    across(.data$epa, mean)
+  ) %>% 
+  ungroup()
+normal_plays_agg
+```
+
+Who ran the most pick plays? (TODO: Add seconds grouping here.)
+
+```{r}
+pick_play_meta %>% 
+  count(team = possession_team, sort = TRUE)
+```

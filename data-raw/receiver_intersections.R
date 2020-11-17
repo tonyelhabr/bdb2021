@@ -60,8 +60,9 @@ identify_intersections_until <- function(data, sec = 0.5, .verbose = bdb2021:::.
         dplyr::mutate(eligible = TRUE),
       ineligible_grps %>%
         dplyr::distinct(.data$game_id, .data$play_id, .data$y_side_init, .data$n_route) %>%
-        dplyr::mutate(eligible = FALSE, has_intersection = FALSE, n_intersection = 0L, intersction = tibble::tibble())
+        dplyr::mutate(eligible = FALSE, has_intersection = FALSE, n_intersection = 0L) #, intersction = tibble::tibble())
     ) %>%
+    dplyr::mutate(intersection = purrr::map_if(intersection, is.null, ~tibble::tibble())) %>%
     dplyr::select(
       .data$game_id,
       .data$play_id,
@@ -108,8 +109,6 @@ do_identify_receiver_intersections <- function(week, ..., n_halfseconds = 7L, .v
         dplyr::select(-.data$event),
       by = c('frame_id', 'game_id', 'play_id')
     )
-
-  receivers_at_snap <- snap_frames %>% bdb2021::add_idx_y_col()
 
   receivers_at_seconds <-
     seconds_frames %>%
