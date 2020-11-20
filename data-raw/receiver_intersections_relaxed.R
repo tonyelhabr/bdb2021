@@ -1,13 +1,9 @@
-## code to prepare `receiver_intersections_relaxed` dataset goes here
 
-# games <- bdb2021::import_games()
-# plays <- bdb2021::import_plays()
+identify_intersection_possibly <- purrr::possibly(identify_intersection, otherwise = NULL)
 
-identify_intersection_possibly <- purrr::possibly(:identify_intersection, otherwise = NULL)
+identify_intersections_until <- function(data, sec = 0.5) {
 
-identify_intersections_until <- function(data, sec = 0.5, .verbose = .get_verbose()) {
-
-  .display_info('Identifying intersections up through {sec} seconds at {Sys.time()}.', .verbose = .verbose)
+  .display_info('Identifying intersections up through {sec} seconds at {Sys.time()}.')
 
   intersections_init <-
     data %>%
@@ -58,16 +54,16 @@ identify_intersections_until <- function(data, sec = 0.5, .verbose = .get_verbos
   res
 }
 
-do_identify_receiver_intersections <- function(..., .verbose = bdb2021:::.get_verbose()) {
+do_identify_receiver_intersections <- function(...) {
 
-  frames <- prep_do_by_week(.verbose = .verbose, .msg = 'Identifying closest receivers', ...)
+  frames <- prep_do_by_week(.msg = 'Identifying closest receivers', ...)
 
   receivers <-
     frames %>%
     # Use the `y_side` from the snap time, not at a given seconds' time.
     dplyr::select(-.data$x_side, -.data$y_side) %>%
     dplyr::inner_join(
-      seconds_frames %>%
+      frames %>%
         # Filter to ball snap time.
         dplyr::filter(.data$sec == 0) %>%
         # Only consider receivers not in the backfield nor starting in the middle
@@ -90,19 +86,52 @@ do_identify_receiver_intersections <- function(..., .verbose = bdb2021:::.get_ve
           .data$sec,
           ~identify_intersections_until(
             receivers,
-            sec = .x,
-            .verbose = .verbose
+            sec = .x
           )
         )
     ) %>%
-    tidyr::unnest(data)
+    tidyr::unnest(.data$data)
   intersections
 }
 
-weeks <- 1L:17L
+weeks <- 1:17L
 # weeks <- 1L
-receiver_intersections_relaxed <-
-  tibble::tibble(week = !!weeks) %>%
-  dplyr::mutate(data = purrr::map(.data$week, do_identify_receiver_intersections))
+receiver_intersections_relaxed <- weeks %>% do_by_week(f = do_identify_receiver_intersections)
+
+# Adjust seconds so that pick plays are more correctly categorized---by half second split and not "up until x seconds".
+
+pick_play_ids_adj <-
+  receiver_intersections_relaxed %>%
+  dplyr::filter(has_intersection) %>%
+  tidyr::unnest(intersection) %>%
+  dplyr::filter(nfl_id < nfl_id_intersect) %>%
+  dplyr::select(
+    .data$week,
+    .data$game_id,
+    .data$play_id,
+    .data$n_route,
+    .data$n_intersection,
+    nfl_id,
+    nfl_id_intersect,
+    .data$sec
+  ) %>%
+  dplyr::group_by(.data$game_id, .data$play_id, nfl_id, nfl_id_intersect) %>%
+  dplyr::filter(.data$sec == min(.data$sec)) %>%
+  dplyr::ungroup() %>%
+  dplyr::rename(sec_end = .data$sec) %>%
+  dplyr::mutate(sec_start = .data$sec_end - 0.5) %>%
+  dplyr::relocate(.data$sec_start, .data$sec_end, .after = dplyr::last_col()) %>%
+  dplyr::arrange(.data$week, .data$game_id, .data$play_id, .data$sec_start, nfl_id, nfl_id_intersect)
+pick_play_ids_adj
+
+receiver_intersections_relaxed_adj <-
+  pick_play_ids_adj %>%
+  dplyr::inner_join(
+    receiver_intersections_relaxed %>%
+      dplyr::rename(sec_end = .data$sec),
+    by = c('week', 'game_id', 'play_id', 'n_route', 'n_intersection', 'sec_end')
+  )
 
 usethis::use_data(receiver_intersections_relaxed, overwrite = TRUE)
+usethis::use_data(pick_play_ids_adj, overwrite = TRUE)
+usethis::use_data(receiver_intersections_relaxed_adj, overwrite = TRUE)

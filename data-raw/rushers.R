@@ -1,10 +1,9 @@
 
-do_identify_rushers <- function(week = 1L, at = 'end_rush', ...) {
+do_identify_personnel_and_rushers <- function(week = 1L, at = 'end_rush', ...) {
 
-  .display_info('Identifying rushers for week {week} at {Sys.time()}.')
+  .display_info('Identifying personnel and rushers for week {week} at {Sys.time()}.')
 
-  tracking <- week %>% import_week()
-  # tracking <- tracking %>% bdb2021::add_side_cols()
+  tracking <- week %>% import_tracking()
 
   tracking_clipped <- tracking %>% clip_tracking_at_events(at = at)
 
@@ -15,10 +14,10 @@ do_identify_rushers <- function(week = 1L, at = 'end_rush', ...) {
     dplyr::ungroup()
   end_frames
 
-  def_end_frames <- end_frames %>% dplyr::filter(.data$side == 'D')
+  def_end_frames <-
+    end_frames %>%
+    dplyr::filter(.data$side == 'D')
 
-  # qb_end_frames <- end_frames %>% filter(position == 'QB')
-  # ball_end_frames <- end_frames %>% select(game_id, play_id, ball_x, ball_y)
   ball_end_frames <-
     end_frames %>%
     dplyr::distinct(game_id, play_id, frame_id, ball_x, ball_y)
@@ -45,27 +44,52 @@ do_identify_rushers <- function(week = 1L, at = 'end_rush', ...) {
       idx_closest_to_ball = dplyr::row_number(dist_to_ball_abs)
     )
 
-  # def_end_frames %>%
-  #   filter((x + 1) < los) %>%
-  #   count(game_id, play_id, event, sort = TRUE) %>%
-  #   head(10) %>%
-  #   mutate(plot = map2(game_id, play_id, ~plot_play(game_id = ..1, play_id = ..2, save = TRUE, dir = 'data-raw', tracking = tracking)))
-  #
-  # positive_sacks <-
-  #   end_frames %>%
-  #   dplyr::filter(position == 'QB') %>%
-  #   filter(x > los) %>%
-  #   select(game_id, play_id) %>%
-  #   inner_join(plays %>% select(game_id, play_id, play_result, pass_result, play_description))
-  # positive_sacks
+  def_agg <-
+    def_end_frames %>%
+    dplyr::select(.data$game_id, .data$play_id) %>%
+    dplyr::group_by(.data$game_id, .data$play_id) %>%
+    dplyr::summarize(n_d = dplyr::n()) %>%
+    dplyr::ungroup()
 
-  rushers <-
-    potential_rushers_ranked %>%
-    tidyr::nest(rushers = -c(game_id, play_id))
-  rushers
+  off_agg <-
+    end_frames %>%
+    dplyr::filter(.data$side == 'O' & .data$position != 'QB') %>%
+    dplyr::group_by(.data$game_id, .data$play_id) %>%
+    dplyr::summarize(n_o_nonqb = dplyr::n(), n_route = sum(!is.na(.data$route))) %>%
+    dplyr::ungroup() %>%
+    dplyr::left_join(
+      end_frames %>%
+        dplyr::filter(.data$position == 'QB') %>%
+        dplyr::group_by(.data$game_id, .data$play_id) %>%
+        dplyr::summarize(n_qb = dplyr::n()) %>%
+        dplyr::ungroup(),
+      by = c('game_id', 'play_id')
+    ) %>%
+    dplyr::select(.data$game_id, .data$play_id, .data$n_qb, .data$n_o_nonqb, .data$n_route)
+
+  personnel_and_rushers <-
+    off_agg %>%
+    dplyr::left_join(
+      def_agg,
+      by = c('game_id', 'play_id')
+    ) %>%
+    dplyr::left_join(
+      potential_rushers_ranked %>%
+        tidyr::nest(
+          rushers = -c(.data$game_id, .data$play_id)
+        ),
+      by = c('game_id', 'play_id')
+    ) %>%
+    dplyr::mutate(
+      # has_rusher = map_lgl(rushers, ~!is.null(.x))
+      rushers = purrr::map_if(rushers, is.null, ~tibble::tibble()),
+      n_rusher = purrr::map_int(rushers, ~nrow(.x))
+    ) %>%
+    dplyr::relocate(rushers, .after = dplyr::last_col())
+  personnel_and_rushers
 
 }
 
 weeks <- 1:17L
-rushers <- weeks %>% do_by_week(f = do_identify_rushers)
-usethis::use_data(rushers, overwrite = TRUE)
+personnel_and_rushers <- weeks %>% do_by_week(f = do_identify_personnel_and_rushers)
+usethis::use_data(personnel_and_rushers, overwrite = TRUE)

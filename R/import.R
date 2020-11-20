@@ -66,10 +66,10 @@ import_colors <- memoise::memoise({function(dir = .get_dir()) {
 #' @inheritParams import_positions
 #' @examples
 #' \dontrun{
-#' import_week(1)
+#' import_tracking(1)
 #' }
-import_week <- function(week, positions = import_positions(), standardize = TRUE, dir = .get_dir()) {
-  path <- file.path(dir, sprintf('week%d.csv', week))
+import_tracking <- function(week = 1, positions = import_positions(), plays = import_plays(), standardize = TRUE) {
+  path <- file.path(.get_dir(), sprintf('week%d.csv', week))
   tracking <-
     path %>%
     vroom::vroom(
@@ -99,6 +99,8 @@ import_week <- function(week, positions = import_positions(), standardize = TRUE
       )
     )
   tracking <- tracking[-1, ]
+  tracking <- tracking[, -1] # Never need the time column
+  # tracking <- tracking %>% dplyr::select(-.data$time)
 
   tracking <-
     tracking %>%
@@ -109,8 +111,10 @@ import_week <- function(week, positions = import_positions(), standardize = TRUE
     )
 
   ball <- tracking %>% dplyr::filter(display_name == 'Football')
+  qb <- tracking %>% dplyr::filter(position == 'QB')
 
   tracking <- tracking %>% dplyr::filter(display_name != 'Football')
+  tracking <- tracking %>% dplyr::filter(position != 'QB')
 
   tracking <-
     tracking %>%
@@ -118,12 +122,13 @@ import_week <- function(week, positions = import_positions(), standardize = TRUE
       ball %>%
         dplyr::select(game_id, play_id, frame_id, ball_x = x, ball_y = y),
       by = c('frame_id', 'game_id', 'play_id')
+    ) %>%
+    dplyr::inner_join(
+      ball %>%
+        dplyr::select(game_id, play_id, frame_id, qb_x = x, qb_y = y),
+      by = c('frame_id', 'game_id', 'play_id')
     )
   tracking
-
-  if(!standardize) {
-    return(tracking)
-  }
 
   line_of_scrimmage <-
     tracking %>%
@@ -131,20 +136,34 @@ import_week <- function(week, positions = import_positions(), standardize = TRUE
     dplyr::group_by(.data$game_id, .data$play_id) %>%
     dplyr::filter(dplyr::row_number() == 1L) %>%
     dplyr::ungroup() %>%
-    dplyr::select(.data$game_id, .data$play_id, los = .data$ball_x) %>%
-    dplyr::ungroup()
+    dplyr::select(.data$game_id, .data$play_direction, .data$play_id, los = .data$ball_x) %>%
+    dplyr::ungroup() %>%
+    dplyr::left_join(
+      plays %>%
+        dplyr::select(.data$game_id, .data$play_id, .data$yards_to_go),
+      by = c('game_id', 'play_id')
+    ) %>%
+    dplyr::mutate(fd = .data$los + dplyr::if_else(.data$play_direction == 'left', -1, 1) * .data$yards_to_go) %>%
+    dplyr::select(.data$yards_to_go, .data$play_direction)
+
+  tracking <-
+    tracking %>%
+    dplyr::left_join(line_of_scrimmage, by = c('game_id', 'play_id'))
+
+  if(!standardize) {
+    return(tracking)
+  }
 
   x_max <- 120
   y_max <- 160 / 3
   tracking <-
     tracking %>%
-    dplyr::left_join(line_of_scrimmage, by = c('game_id', 'play_id')) %>%
     dplyr::mutate(
-      dplyr::across(c(.data$x, .data$ball_x, .data$los), ~ dplyr::if_else(.data$play_direction == 'left', !!x_max - .x, .x)),
+      dplyr::across(c(.data$x, .data$ball_x, .data$qb_x, .data$los, .data$fd), ~ dplyr::if_else(.data$play_direction == 'left', !!x_max - .x, .x)),
       # Standardizing the x direction based on the los is best for doing general analysis,
       # but perhaps not for plotting.
       # across(c(x, ball_x), ~.x - los),
-      dplyr::across(c(.data$y, .data$ball_y), ~ dplyr::if_else(.data$play_direction == 'left', !!y_max - .x, .x))
+      dplyr::across(c(.data$y, .data$ball_y, .data$qb_y), ~ dplyr::if_else(.data$play_direction == 'left', !!y_max - .x, .x))
     )
   tracking
 }
@@ -198,10 +217,26 @@ import_players <- memoise::memoise({function(dir = .get_dir()) {
         weight = vroom::col_integer()
       )
     ) # %>%
-    # dplyr::select(.data$nfl_id, .data$display_name, .data$position)
+  # dplyr::select(.data$nfl_id, .data$display_name, .data$position)
   players
 }})
 
+.extract_n_position <- function(x, position) {
+  rgx <- sprintf('(^.*)([0-9])(\\s%s.*$)', toupper(position))
+  x %>%
+    stringr::str_replace_all(rgx, '\\2') %>%
+    as.integer()
+}
+
+.drop_bad_plays <- function(plays) {
+  plays %>%
+    dplyr::anti_join(
+      plays %>%
+        dplyr::filter((.data$n_k > 0L | .data$n_p > 0L)) %>%
+        dplyr::select(.data$game_id, .data$play_id),
+      by = c('game_id', 'play_id')
+    )
+}
 
 #' Import plays data
 #'
@@ -210,7 +245,7 @@ import_players <- memoise::memoise({function(dir = .get_dir()) {
 #' \dontrun{
 #' import_plays()
 #' }
-import_plays <- memoise::memoise({function(dir = .get_dir()) {
+import_plays <- memoise::memoise({function(dir = .get_dir(), drop_bad = FALSE) {
   path <- file.path(dir, 'plays.csv')
   plays <-
     path %>%
@@ -252,6 +287,48 @@ import_plays <- memoise::memoise({function(dir = .get_dir()) {
     plays %>%
     dplyr::inner_join(target, by = c('game_id', 'play_id'))
   plays
+
+  suppressWarnings(
+    plays <-
+      plays %>%
+      dplyr::mutate(
+        dplyr::across(
+          .data$personnel_o,
+          list(
+            n_rb = ~.extract_n_position(.x, 'rb'),
+            n_wr = ~.extract_n_position(.x, 'wr'),
+            n_te = ~.extract_n_position(.x, 'te'),
+            n_qb = ~.extract_n_position(.x, 'qb'),
+            n_ol = ~.extract_n_position(.x, 'ol'),
+            n_p = ~.extract_n_position(.x, 'p'),
+            n_k = ~.extract_n_position(.x, 'k'),
+            n_ls = ~.extract_n_position(.x, 'ls'),
+            n_dl_o = ~.extract_n_position(.x, 'dl'),
+            n_lb_o = ~.extract_n_position(.x, 'lb'),
+            n_db_o = ~.extract_n_position(.x, 'db')
+          ),
+          .names = '{fn}'
+        ),
+        dplyr::across(
+          .data$personnel_d,
+          list(
+            n_dl = ~.extract_n_position(.x, 'dl'),
+            n_lb = ~.extract_n_position(.x, 'lb'),
+            n_db = ~.extract_n_position(.x, 'db'),
+            n_rb_d = ~.extract_n_position(.x, 'rb'),
+            n_wr_d = ~.extract_n_position(.x, 'wr'),
+            n_te_d = ~.extract_n_position(.x, 'te')
+          ),
+          .names = '{fn}'
+        )
+      )
+  )
+
+  if(!drop_bad) {
+    return(plays)
+  }
+  plays %>% .drop_bad_plays()
+
 }})
 
 #' Import \code{nflfastR} play-by-play data
@@ -265,5 +342,8 @@ import_plays <- memoise::memoise({function(dir = .get_dir()) {
 import_nflfastr_pbp <- memoise::memoise({function(season = 2018) {
   sprintf('https://raw.githubusercontent.com/guga31bb/nflfastR-data/master/data/play_by_play_%s.rds', season) %>%
     url() %>%
-    readr::read_rds()
+    readr::read_rds() %>%
+    dplyr::rename(new_game_id = .data$game_id) %>%
+    dplyr::rename(game_id = .data$old_game_id) %>%
+    dplyr::mutate(dplyr::across(c(.data$game_id, .data$play_id), as.integer))
 }})

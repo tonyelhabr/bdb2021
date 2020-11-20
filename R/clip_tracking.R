@@ -3,26 +3,9 @@
   at <- match.arg(at)
   switch(
     at,
-    throw = c(
-      'pass_forward',
-      'pass_shovel'
-    ),
-    end_routes = c(
-      'pass_outcome_caught',
-      'pass_outcome_incomplete',
-      'qb_sack',
-      'pass_outcome_interception',
-      'pass_outcome_touchdown',
-      'qb_strip_sack',
-      'qb_spike'
-    ),
-    end_rush = c(
-      'pass_forward',
-      'pass_shovel',
-      'qb_sack',
-      'qb_strip_sack',
-      'qb_spike'
-    )
+    throw = .get_events_throw(),
+    end_routes = .get_events_end_routes(),
+    end_rush = .get_events_end_rush()
   )
 }
 

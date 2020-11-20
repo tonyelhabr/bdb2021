@@ -81,7 +81,7 @@ do_identify_receiver_intersections <- function(week, ..., n_halfseconds = 7L, .v
 
   bdb2021:::.display_info('Identifying intersections for week {week} at {Sys.time()}.', .verbose = .verbose)
 
-  tracking <- week %>% bdb2021::import_week()
+  tracking <- week %>% bdb2021::import_tracking()
   tracking <- tracking %>% bdb2021::add_side_cols()
 
   tracking_at_throw <- tracking %>% bdb2021::clip_tracking_at_events('throw')

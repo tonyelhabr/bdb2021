@@ -2,8 +2,8 @@
 #' Plot a play
 #'
 #' @description Plot a play
-#' @param game_id
-#' @param play_id
+#' @param game_id `game_id`
+#' @param play_id `play_id`
 #' @examples
 #' \dontrun{
 #' plot_play()
@@ -12,10 +12,9 @@
 plot_play <-
   function(game_id = 2018090600,
            play_id = 75,
-           .dir = .get_dir(),
-           plays = import_plays(dir = .dir),
-           games = import_games(dir = .dir),
-           positions = import_positions(dir = .dir),
+           plays = import_plays(),
+           games = import_games(),
+           positions = import_positions(),
            week = NULL,
            tracking = NULL,
            team_colors = FALSE,
@@ -27,8 +26,8 @@ plot_play <-
            endzone_color = NULL,
            buffer = NULL,
            at = 'end_routes',
-           save = FALSE,
-           dir = 'figs',
+           save = TRUE,
+           dir = 'inst',
            filename = sprintf('%s-%s.png', game_id, play_id),
            path = file.path(dir, filename),
            width = 10,
@@ -47,7 +46,7 @@ plot_play <-
     }
 
     if(is.null(tracking)) {
-      tracking <- import_week(week = week, positions = positions, dir = .dir)
+      tracking <- import_tracking(week = week, positions = positions, standardize = FALSE)
     }
 
     tracking <-
@@ -90,6 +89,7 @@ plot_play <-
       dplyr::arrange(game_id, play_id, nfl_id, frame_id)
 
     snap_frames <- tracking_clipped %>% dplyr::filter(frame_id == min(frame_id))
+    notable_frames <- tracking_clipped %>% filter_notable_events()
     end_frames <- tracking_clipped %>% dplyr::filter(frame_id == max(frame_id)) # %>% dplyr::mutate(event = !!event_end)
     frames <- dplyr::bind_rows(snap_frames, end_frames)
 
@@ -108,7 +108,9 @@ plot_play <-
       # dplyr::mutate(event = !!event_end)
 
     ball <-
-      snap_frames %>%
+      # list(snap_frames, throw_frames) %>%
+      # purrr::reduce(dplyr::bind_rows) %>%
+      notable_frames %>%
       dplyr::distinct(game_id, play_id, frame_id, x = ball_x, y = ball_y) %>%
       dplyr::mutate(nfl_id = NA_integer_)
 
@@ -262,6 +264,7 @@ plot_play <-
       ggplot2::geom_text(
         data = snap_frames,
         ggplot2::aes(label = jersey_number, color = side),
+        show.legend = FALSE,
         fontface = 'bold',
         size = pts(14)
       )
@@ -294,9 +297,11 @@ plot_play <-
                              game_id = {game$game_id}, play_id = {play$play_id}'),
         x = NULL, y = NULL
       )
+    print(p)
 
     if(!save) {
-      return(p)
+      # return(p)
+      return(tracking)
     }
 
     if(!dir.exists(dirname(path))) {
@@ -310,4 +315,5 @@ plot_play <-
       height = height,
       type = 'cairo'
     )
+    tracking
   }

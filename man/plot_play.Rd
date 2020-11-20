@@ -20,9 +20,9 @@ plot_play(
   sideline_color = "white",
   endzone_color = NULL,
   buffer = NULL,
-  at = c("end_routes", "throw"),
-  save = FALSE,
-  dir = "figs",
+  at = "end_routes",
+  save = TRUE,
+  dir = "inst",
   filename = sprintf("\%s-\%s.png", game_id, play_id),
   path = file.path(dir, filename),
   width = 10,
@@ -30,6 +30,11 @@ plot_play(
   ...,
   .verbose = .get_verbose()
 )
+}
+\arguments{
+\item{game_id}{\code{game_id}}
+
+\item{play_id}{\code{play_id}}
 }
 \description{
 Plot a play

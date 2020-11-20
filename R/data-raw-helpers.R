@@ -3,7 +3,7 @@ prep_do_by_week <- function(week = 1L, n_halfseconds = 7L, at = 'throw', ..., .v
 
   .display_info('{.msg} for week {week} at {Sys.time()}.', .verbose = .verbose)
 
-  tracking <- week %>% import_week()
+  tracking <- week %>% import_tracking()
   # tracking <- tracking %>% bdb2021::add_side_cols()
 
   tracking_clipped <- tracking %>% clip_tracking_at_events(at = at)

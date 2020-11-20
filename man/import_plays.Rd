@@ -4,7 +4,13 @@
 \alias{import_plays}
 \title{Import plays data}
 \usage{
-import_plays(dir = .get_dir())
+import_plays(dir = .get_dir(), drop_bad = FALSE)
+}
+\arguments{
+\item{dir}{Directory where file is stored, which is dependent on whether
+the code is run locally or on Kaggle.
+Best to change with \code{options(bdb2021.dir = <dir>)} so that other \code{import_}
+functions have the same change.}
 }
 \description{
 Import plays data
