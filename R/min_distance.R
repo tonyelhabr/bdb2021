@@ -18,9 +18,9 @@
 #' Compute min distances between players.
 #'
 #' @description Compute "optimal" nearest assignments of defensive players to individual offensive and defensive players (not including QB) in a single frame using the Hungarian method.
-#' @param data A data.frame with 4 columns: `nfl_id`, `side` (either "O" or "D"), `x`, `y`.
+#' @param o A data.frame with 3 columns: `nfl_id`, `x`, `y`.
 #' @return A tibble with 6 columns: `nfl_id_o`, `nfl_id_d`, `x_o`, `x_d`, `y_o`, `y_d`.
-compute_min_distances <- function(o, d) {
+compute_min_distances <- function(o, d, one_pass = TRUE) {
   o_mat <- o %>% .coerce_to_mat()
   d_mat <- d %>% .coerce_to_mat()
   dists <- fields::rdist(o_mat, d_mat)
@@ -31,7 +31,17 @@ compute_min_distances <- function(o, d) {
   cols_idx_min <- clue::solve_LSAP(dists, maximum = FALSE)
   cols_min <- cols[cols_idx_min]
   cols_leftover <- cols[setdiff(1:length(cols), cols_idx_min)]
-  if(length(cols_leftover) <= length(rows)) {
+  if(one_pass) {
+
+    pairs <-
+      tibble::tibble(
+        nfl_id_o = rows,
+        nfl_id_d = cols_min,
+        idx_closest = c(rep(1L, length(rows)))
+      ) %>%
+      dplyr::mutate(dplyr::across(dplyr::starts_with('nfl_id'), as.integer))
+
+  } else if(length(cols_leftover) <= length(rows)) {
     rows_idx_min_leftover <- clue::solve_LSAP(t(dists[, cols_leftover]), maximum = FALSE)
     rows_min_leftover <- rows[rows_idx_min_leftover]
     pairs <-

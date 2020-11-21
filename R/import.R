@@ -1,4 +1,7 @@
 
+#' @description Get directory where file is stored, which is dependent on whether
+#' the code is run locally or on Kaggle.
+#' Best to change with \code{options(bdb2021.dir = <dir>)} so that other \code{import_}
 .get_dir <- function() {
   getOption('bdb2021.dir')
 }
@@ -6,17 +9,14 @@
 #' Import position categorization data
 #'
 #' @description Useful for \code{side} column (either \code{"O"} or \code{"D"})
-#' @param dir Directory where file is stored, which is dependent on whether
-#' the code is run locally or on Kaggle.
-#' Best to change with \code{options(bdb2021.dir = <dir>)} so that other \code{import_}
 #' functions have the same change.
 #' @seealso \url{https://github.com/leesharpe/nfldata/blob/master/data/positions.csv}
 #' @examples
 #' \dontrun{
 #' import_positions()
 #' }
-import_positions <- memoise::memoise({function(dir = .get_dir()) {
-  path <- file.path(dir, 'positions.csv')
+import_positions <- memoise::memoise({function() {
+  path <- file.path(.get_dir(), 'positions.csv')
   positions <-
     path %>%
     vroom::vroom(
@@ -38,8 +38,8 @@ import_positions <- memoise::memoise({function(dir = .get_dir()) {
 #' \dontrun{
 #' import_colors()
 #' }
-import_colors <- memoise::memoise({function(dir = .get_dir()) {
-  path <- file.path(dir, 'teamcolors.csv')
+import_colors <- memoise::memoise({function() {
+  path <- file.path(.get_dir(), 'teamcolors.csv')
   colors <-
     path %>%
     vroom::vroom(
@@ -68,7 +68,7 @@ import_colors <- memoise::memoise({function(dir = .get_dir()) {
 #' \dontrun{
 #' import_tracking(1)
 #' }
-import_tracking <- function(week = 1, positions = import_positions(), plays = import_plays(), standardize = TRUE) {
+import_tracking <- function(week = 1, positions = import_positions(), standardize = TRUE) {
   path <- file.path(.get_dir(), sprintf('week%d.csv', week))
   tracking <-
     path %>%
@@ -111,24 +111,15 @@ import_tracking <- function(week = 1, positions = import_positions(), plays = im
     )
 
   ball <- tracking %>% dplyr::filter(display_name == 'Football')
-  qb <- tracking %>% dplyr::filter(position == 'QB')
-
   tracking <- tracking %>% dplyr::filter(display_name != 'Football')
-  tracking <- tracking %>% dplyr::filter(position != 'QB')
 
   tracking <-
     tracking %>%
     dplyr::inner_join(
       ball %>%
-        dplyr::select(game_id, play_id, frame_id, ball_x = x, ball_y = y),
-      by = c('frame_id', 'game_id', 'play_id')
-    ) %>%
-    dplyr::inner_join(
-      ball %>%
-        dplyr::select(game_id, play_id, frame_id, qb_x = x, qb_y = y),
+        dplyr::select(.data$game_id, .data$play_id, .data$frame_id, ball_x = .data$x, ball_y = .data$y),
       by = c('frame_id', 'game_id', 'play_id')
     )
-  tracking
 
   line_of_scrimmage <-
     tracking %>%
@@ -136,15 +127,8 @@ import_tracking <- function(week = 1, positions = import_positions(), plays = im
     dplyr::group_by(.data$game_id, .data$play_id) %>%
     dplyr::filter(dplyr::row_number() == 1L) %>%
     dplyr::ungroup() %>%
-    dplyr::select(.data$game_id, .data$play_direction, .data$play_id, los = .data$ball_x) %>%
-    dplyr::ungroup() %>%
-    dplyr::left_join(
-      plays %>%
-        dplyr::select(.data$game_id, .data$play_id, .data$yards_to_go),
-      by = c('game_id', 'play_id')
-    ) %>%
-    dplyr::mutate(fd = .data$los + dplyr::if_else(.data$play_direction == 'left', -1, 1) * .data$yards_to_go) %>%
-    dplyr::select(.data$yards_to_go, .data$play_direction)
+    dplyr::select(.data$game_id, .data$play_id, los = .data$ball_x) %>%
+    dplyr::ungroup()
 
   tracking <-
     tracking %>%
@@ -159,11 +143,11 @@ import_tracking <- function(week = 1, positions = import_positions(), plays = im
   tracking <-
     tracking %>%
     dplyr::mutate(
-      dplyr::across(c(.data$x, .data$ball_x, .data$qb_x, .data$los, .data$fd), ~ dplyr::if_else(.data$play_direction == 'left', !!x_max - .x, .x)),
+      dplyr::across(c(.data$x, .data$ball_x, .data$los), ~ dplyr::if_else(.data$play_direction == 'left', !!x_max - .x, .x)),
       # Standardizing the x direction based on the los is best for doing general analysis,
       # but perhaps not for plotting.
       # across(c(x, ball_x), ~.x - los),
-      dplyr::across(c(.data$y, .data$ball_y, .data$qb_y), ~ dplyr::if_else(.data$play_direction == 'left', !!y_max - .x, .x))
+      dplyr::across(c(.data$y, .data$ball_y), ~ dplyr::if_else(.data$play_direction == 'left', !!y_max - .x, .x))
     )
   tracking
 }
@@ -175,8 +159,8 @@ import_tracking <- function(week = 1, positions = import_positions(), plays = im
 #' \dontrun{
 #' import_games()
 #' }
-import_games <- memoise::memoise({function(dir = .get_dir()) {
-  path <- file.path(dir, 'games.csv')
+import_games <- memoise::memoise({function() {
+  path <- file.path(.get_dir(), 'games.csv')
   games <-
     path %>%
     vroom::vroom(
@@ -202,8 +186,8 @@ import_games <- memoise::memoise({function(dir = .get_dir()) {
 #' \dontrun{
 #' import_players()
 #' }
-import_players <- memoise::memoise({function(dir = .get_dir()) {
-  path <- file.path(dir, 'players.csv')
+import_players <- memoise::memoise({function() {
+  path <- file.path(.get_dir(), 'players.csv')
   # TODO: dob needs some fixinig
   players <-
     path %>%
@@ -245,8 +229,8 @@ import_players <- memoise::memoise({function(dir = .get_dir()) {
 #' \dontrun{
 #' import_plays()
 #' }
-import_plays <- memoise::memoise({function(dir = .get_dir(), drop_bad = FALSE) {
-  path <- file.path(dir, 'plays.csv')
+import_plays <- memoise::memoise({function(drop_bad = TRUE) {
+  path <- file.path(.get_dir(), 'plays.csv')
   plays <-
     path %>%
     vroom::vroom(
@@ -272,7 +256,7 @@ import_plays <- memoise::memoise({function(dir = .get_dir(), drop_bad = FALSE) {
         is_defensive_pi = vroom::col_logical()
       )
     )
-  path <- file.path(dir, 'targetedReciever.csv')
+  path <- file.path(.get_dir(), 'targetedReciever.csv')
   target <-
     path %>%
     vroom::vroom(

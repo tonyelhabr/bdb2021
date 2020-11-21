@@ -95,7 +95,8 @@ plot_play <-
 
     line_of_scrimmage <- play$absolute_yardline_number
     play_direction <- tracking$play_direction[[1]]
-    first_down_line <- line_of_scrimmage + ifelse(play_direction == 'left', -1, 1) * play$yards_to_go
+    sign <- ifelse(play_direction == 'left', -1, 1)
+    first_down_line <- line_of_scrimmage + sign * play$yards_to_go
 
     target_tracking_clipped <-
       tracking_clipped %>%
@@ -231,7 +232,7 @@ plot_play <-
         p +
         ggplot2::geom_path(
           data = target_tracking_clipped,
-          aes(color =  side),
+          aes(color = side),
           size = 2,
           alpha = 0.5,
           show.legend = FALSE
@@ -267,6 +268,14 @@ plot_play <-
         show.legend = FALSE,
         fontface = 'bold',
         size = pts(14)
+      ) +
+      ggplot2::geom_text(
+        data = snap_frames,
+        ggplot2::aes(label = sprintf('(%s)', nfl_id), color = side),
+        hjust = 1.5 * sign,
+        show.legend = FALSE,
+        fontface = 'bold',
+        size = pts(10)
       )
 
     p <-

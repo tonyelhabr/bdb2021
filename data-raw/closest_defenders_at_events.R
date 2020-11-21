@@ -12,7 +12,6 @@ do_identify_closest_defenders_ohsnap <- function(week = 1L, at = 'end_routes', .
 
   tracking_clipped <- tracking %>% clip_tracking_at_events(at = at)
 
-  notable_events <- get_notable_events()
   frames <-
    tracking_clipped %>%
    # dplyr::group_by(.data$game_id, .data$play_id) %>%
@@ -67,7 +66,6 @@ do_identify_closest_defenders_ohsnap <- function(week = 1L, at = 'end_routes', .
   # One strange source of bad data is play_id-frame_id combos where there is just 1 player.
   frames_n <-
     frames %>%
-    # head(1000) %>%
     dplyr::count(.data$game_id, .data$play_id, .data$event, .data$frame_id)
 
   closest_defenders_init <-
@@ -75,16 +73,15 @@ do_identify_closest_defenders_ohsnap <- function(week = 1L, at = 'end_routes', .
     # head(100) %>%
     dplyr::anti_join(
       frames_n %>%
-        filter(.data$n == 1L),
+        dplyr::filter(.data$n == 1L),
       by = c('game_id', 'play_id', 'event', 'frame_id')
     ) %>%
-    dplyr::inner_join(
-      positions %>%
-        dplyr::select(.data$side, .data$position_category, .data$position),
-      by = c('position', 'side')
-    ) %>%
-    dplyr::filter(.data$position != 'QB') %>%
-    dplyr::select(-.data$position_category) %>%
+    # dplyr::inner_join(
+    #   positions %>%
+    #     dplyr::select(.data$side, .data$position_category, .data$position),
+    #   by = c('position', 'side')
+    # ) %>%
+    # dplyr::filter(.data$position != 'QB') %>%
     dplyr::select(
       .data$game_id,
       .data$play_id,
@@ -100,10 +97,6 @@ do_identify_closest_defenders_ohsnap <- function(week = 1L, at = 'end_routes', .
       personnel_and_rushers_week,
       by = c('game_id', 'play_id')
     ) %>%
-    # dplyr::mutate(
-    #   has_rusher = purrr::map_lgl(.data$rushers, ~!is.null(.x)),
-    #   rushers = purrr::map_if(.data$rushers, is.null, ~tibble::tibble())
-    # ) %>%
     dplyr::mutate(
       o = purrr::map(.data$data, ~.x %>% .select_side('o')),
       d = purrr::map(.data$data, ~.x %>% .select_side('d')),
@@ -113,11 +106,12 @@ do_identify_closest_defenders_ohsnap <- function(week = 1L, at = 'end_routes', .
 
   closest_defenders <-
     closest_defenders_init %>%
+    slice(1) %>%
     dplyr::mutate(
       min_distances = purrr::map2(
         .data$o,
         .data$d,
-        ~ compute_min_distances_possibly(o = ..1, d = ..2)
+        ~ compute_min_distances(o = ..1, d = ..2)
       ),
       is_bad = purrr::map_lgl(.data$min_distances, is.null)
     ) %>%
@@ -157,43 +151,3 @@ closest_defenders_at_events %>% write_rds('closest_defenders_at_events.rds')
 # closest_defenders_at_events %>%
 #   sample_n(1) %>%
 #   unnest(min_distances)
-data('closest_defenders')
-plot_play(game_id = 2018091001, play_id = 1970, save = TRUE)
-closest_defenders %>%
-  filter(game_id == 2018091001, play_id == 1970) %>% # First play
-  unnest(min_distances) %>%
-  select(-is_bad) %>%
-  filter(nfl_id_o == 2495454)
-closest_defenders_at_events %>%
-  filter(game_id == 2018090600, play_id == 75) %>% # First play
-  select(-is_bad) %>%
-  unnest(min_distances) %>%
-  filter(nfl_id_o == 2495454) # Julio
-
-# plot_play(dir = 'data-raw')
-# players <- import_players()
-# players %>% filter(display_name == 'Julio Jones')
-# players %>% filter(nfl_id %in% c(2555383, 79848))
-# tracking <- import_tracking(1)
-# tracking %>% filter(game_id == 2018090600, play_id == 75) %>% filter(nfl_id %in% c(2555383, 79848))
-data('closest_defenders_at_events', package = 'bdb2021')
-
-res <-
-  closest_defenders_at_events %>%
-  filter(!is_bad) %>%
-  select(-is_bad) %>%
-  head(100) %>%
-  relabel_events() %>%
-  # mutate(min_distances = map(min_distances, ~.x %>%  i
-  unnest(min_distances) %>%
-  group_by(week, game_id, play_id, event, nfl_id_o) %>%
-  mutate(n = n()) %>%
-  filter(row_number() == 1L) %>%
-  ungroup() %>%
-  mutate(has_second_defender = if_else(n > 1L, 1L, 0L)) %>%
-  select(week, game_id, play_id, event, nfl_id_o, dist, has_second_defender) %>%
-  pivot_wider(
-    names_from = c(event),
-    values_from = c(dist, has_second_defender)
-  )
-res
