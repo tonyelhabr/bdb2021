@@ -32,54 +32,117 @@ res <-
     id_grid
   ) %>%
   inner_join(
-    receiver_intersections_relaxed_adj
+    bind_rows(
+      receiver_intersections_relaxed_adj %>% select(-nfl_id_intersect),
+      receiver_intersections_relaxed_adj %>% select(-nfl_id) %>% rename(nfl_id = nfl_id_intersect)
+    )
   )
 res
 
-features_min_wide <-
-  features_min %>%
-  # full_join(id_grid) %>%
-  select(-frame_id) %>%
-  arrange(week, game_id, play_id, nfl_id) %>%
-  fill(nfl_id_d, dist_d, .direction = 'down') %>%
-  # crossing(sec = seq(0, 3, by = 0.5)) %>%
-  # full_join(tibble(sec = seq(0, 3, by = 0.5)))
-  pivot_wider(
-    names_from = c('sec'),
-    values_from = c('nfl_id_d', 'dist_d')
-  )
+# features_min_wide <-
+#   features_min %>%
+#   # full_join(id_grid) %>%
+#   select(-frame_id) %>%
+#   arrange(week, game_id, play_id, nfl_id) %>%
+#   fill(nfl_id_d, dist_d, .direction = 'down') %>%
+#   # crossing(sec = seq(0, 3, by = 0.5)) %>%
+#   # full_join(tibble(sec = seq(0, 3, by = 0.5)))
+#   pivot_wider(
+#     names_from = c('sec'),
+#     values_from = c('nfl_id_d', 'dist_d')
+#   )
 
 features_lag <-
   features_min %>%
   group_by(game_id, play_id, nfl_id) %>%
   mutate(
-    has_same_prev_defender = if_else(nfl_id_d == dplyr::lag(nfl_id_d), 1L, 0L),
-    has_same_init_defender = if_else(nfl_id_d == dplyr::first(nfl_id_d), 1L, 0L)
+    has_same_prev_defender = if_else(nfl_id_d == dplyr::lag(nfl_id_d), TRUE, FALSE),
+    has_same_init_defender = if_else(nfl_id_d == dplyr::first(nfl_id_d), TRUE, FALSE)
   ) %>%
   ungroup() %>%
+  mutate(across(has_same_init_defender, ~if_else(sec == 0, NA, .x))) %>%
   left_join(
-    receiver_intersections_relaxed_adj %>%
-      select(week, game_id, play_id, nfl_id, nfl_id_intersect, sec = sec_end)
+    bind_rows(
+      receiver_intersections_relaxed_adj %>%
+        select(week, game_id, play_id, nfl_id, sec = sec_end),
+      receiver_intersections_relaxed_adj %>%
+        select(week, game_id, play_id, nfl_id = nfl_id_intersect, sec = sec_end)
+    ) %>%
+      mutate(has_intersect = TRUE) %>%
+      arrange(week, game_id, play_id, nfl_id, sec)
   ) %>%
-  mutate(has_intersect = if_else(is.na(nfl_id_intersect), 0L, 1L))
+  mutate(
+    across(has_intersect, ~coalesce(.x, FALSE)),
+    across(has_intersect, ~if_else(sec == 0, NA, .x))
+  )
 features_lag
 
-features_lag_n <-
-  bind_rows(
+features_lag <-
+  features_lag %>%
+  left_join(
     features_lag %>%
-      count(sec, cnd = has_same_prev_defender) %>%
-      mutate(case = 'has_same_prev_defender'),
-    features_lag %>%
-      count(sec, cnd = has_same_init_defender) %>%
-      mutate(case = 'has_same_inital_defender'),
+      filter(has_intersect) %>%
+      select(-sec) %>%
+      mutate(had_intersect = TRUE)
   ) %>%
-  group_by(sec, case) %>%
   mutate(
-    frac = n / sum(n)
+    across(
+      had_intersect,
+      ~case_when(
+        is.na(has_intersect) ~ NA,
+        !has_intersect ~ FALSE,
+        is.na(had_intersect) ~ FALSE,
+        TRUE ~ .x)
+    )
+  )
+features_lag
+
+features_lag_long <-
+  features_lag %>%
+  select(-nfl_id_intersect) %>%
+  rename(prev = has_same_prev_defender, init = has_same_init_defender) %>%
+  pivot_longer(
+    c(prev, init),
+    names_to = 'defender_cnd',
+    values_to = 'defender_lgl'
   ) %>%
-  ungroup() %>%
-  filter(sec > 0)
-features_lag_n
+  rename(current = has_intersect, past = had_intersect) %>%
+  pivot_longer(
+    c(current, past),
+    names_to = 'intersect_cnd',
+    values_to = 'intersect_lgl'
+  )
+features_lag_long %>% filter(sec > 0) %>% filter(intersect_cnd == 'past')
+
+features_lag_n <-
+  features_lag_long %>%
+  filter(sec > 0) %>%
+  count(sec, defender_cnd, defender_lgl, intersect_cnd, intersect_lgl) %>%
+  group_by(sec, defender_cnd, intersect_cnd) %>%
+  mutate(
+    total = sum(n),
+    frac = n / total
+  ) %>%
+  ungroup()
+  # mutate(
+  #   frac_defender = n / sum(n)
+  # ) %>%
+  # group_by(sec, intersect_cnd) %>%
+  # mutate(
+  #   frac_intersect = n / sum(n)
+  # ) %>%
+  # ungroup()
+features_lag_n %>% filter(intersect_cnd == 'past')
+features_lag_n %>%
+  filter(intersect_cnd == 'past', defender_cnd == 'init') %>%
+  mutate(grp = sprintf('Is pick? %s. Is initial defender? %s.', ifelse(intersect_lgl, 'Y', 'N'), ifelse(defender_lgl, 'Y', 'N'))) %>%
+  # group_by(sec) %>%
+  # summarize(across(frac, sum))
+  ggplot() +
+  aes(x = sec, y = n) +
+  geom_col(aes(fill = grp), show.legend = FALSE) +
+  facet_wrap(~grp, scales = 'free')
+
 
 features_lag_nn <-
   features_lag %>%
@@ -97,7 +160,7 @@ features_lag_nn <-
 features_lag_nn
 
 features_lag_n %>%
-  filter(cnd == 1L) %>%
+  filter(cnd == TRUE) %>%
   ggplot() +
   aes(x = sec, y = frac) +
   geom_col() +
@@ -123,7 +186,7 @@ res_lag <-
   mutate(
     across(nfl_id_d, list(prev = ~dplyr::lag(.x))),
     # nfl_id_d_prev = nfl_id_d %>% dplyr::lag(),
-    has_same_defender = if_else(nfl_id_d == nfl_id_d_prev, 1L, 0L)
+    has_same_defender = if_else(nfl_id_d == nfl_id_d_prev, TRUE, FALSE)
   ) %>%
   ungroup()
 res
