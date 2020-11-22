@@ -126,7 +126,7 @@ pick_play_ids_adj
 
 receiver_intersections_relaxed_adj <-
   pick_play_ids_adj %>%
-  dplyr::inner_join(
+  dplyr::semi_join(
     receiver_intersections_relaxed %>%
       dplyr::rename(sec_end = .data$sec),
     by = c('week', 'game_id', 'play_id', 'n_route', 'n_intersection', 'sec_end')

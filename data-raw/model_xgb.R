@@ -48,18 +48,20 @@ features_wide <-
   relocate(idx)
 features_wide # %>% count(idx_o_target)
 
-set.seed(42)
-splits <-
+features_wide_min <-
   features_wide %>%
   select(
     -all_of(cols_id),
     -dplyr::matches('^is_target_'),
     -dplyr::matches('^(a|s|dir|x|y)_'),
     -dplyr::matches('^nfl_id_'),
-    -dplyr::matches('idx_o_[1-5]'),
+    -dplyr::matches('^idx_o_[1-5]$'),
     -dplyr::matches('^dist_qb')
-  ) %>%
-  skimr::skim()
+  )
+
+set.seed(42)
+splits <-
+  features_wide %>%
   rsample::initial_split(strata = col_y)
 trn <- splits %>% rsample::training()
 tst <- splits %>% rsample::testing()
@@ -71,27 +73,27 @@ rec <-
   recipes::update_role(
     # dplyr::matches('^nfl_id_'),
     # dplyr::matches('_id$'),
-    -idx,
+    idx,
     new_role = 'extra'
   )
 rec
 
-spec <-
-  parsnip::boost_tree(
-    trees = 1000,
-    # Model complexity
-    min_n = tune::tune(),
-    tree_depth = tune::tune(),
-    loss_reduction = tune::tune(),
-    # Randomness
-    sample_size = tune::tune(),
-    mtry = tune::tune(),
-    # Step size
-    learn_rate = tune::tune()
-  ) %>%
-  parsnip::set_mode('classification') %>%
-  parsnip::set_engine('xgboost')
-spec
+# spec <-
+#   parsnip::boost_tree(
+#     trees = 1000,
+#     # Model complexity
+#     min_n = tune::tune(),
+#     tree_depth = tune::tune(),
+#     loss_reduction = tune::tune(),
+#     # Randomness
+#     sample_size = tune::tune(),
+#     mtry = tune::tune(),
+#     # Step size
+#     learn_rate = tune::tune()
+#   ) %>%
+#   parsnip::set_mode('classification') %>%
+#   parsnip::set_engine('xgboost')
+# spec
 
 spec <-
   parsnip::rand_forest(
@@ -105,7 +107,9 @@ wf <-
   workflows::workflow() %>%
   workflows::add_recipe(rec) %>%
   workflows::add_model(spec)
-
+# debugonce(parsnip::fit)
+# debugonce(workflows:::.fit_model)
+# debugonce(workflows:::fit_from_xy)
 fit <- parsnip::fit(wf, trn)
 
 spec <-
