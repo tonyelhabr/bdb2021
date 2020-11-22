@@ -1,8 +1,7 @@
 
 library(tidyverse)
-positions <- import_positions()
-plays <- import_plays(drop_bad = TRUE)
-features <- arrow::read_parquet(file.path('inst', 'features.parquet'))
+features <-
+  arrow::read_parquet(file.path('inst', 'features.parquet'))
 
 nms <- features %>% names()
 cols_ball <- nms %>% str_subset('^ball_')
@@ -43,31 +42,37 @@ features_wide <-
     names_from = c('idx_o'),
     values_from  = setdiff(nms, cols_static)
   ) %>%
-  mutate(across(idx_o_target, ~coalesce(.x, 101) %>% factor()))
-features_wide %>% count(idx_o_target)
+  mutate(across(idx_o_target, ~coalesce(.x, 101) %>% factor())) %>%
+  drop_na() %>%
+  mutate(idx = row_number()) %>%
+  relocate(idx)
+features_wide # %>% count(idx_o_target)
 
 set.seed(42)
-splits <- features_wide %>% rsample::initial_split(strata = col_y)
+splits <-
+  features_wide %>%
+  select(
+    -all_of(cols_id),
+    -dplyr::matches('^is_target_'),
+    -dplyr::matches('^(a|s|dir|x|y)_'),
+    -dplyr::matches('^nfl_id_'),
+    -dplyr::matches('idx_o_[1-5]'),
+    -dplyr::matches('^dist_qb')
+  ) %>%
+  skimr::skim()
+  rsample::initial_split(strata = col_y)
 trn <- splits %>% rsample::training()
 tst <- splits %>% rsample::testing()
-folds <- trn %>% rsample::vfold_cv(strata = col_y)
+
 fmla <- paste0(col_y, ' ~ .') %>% as.formula()
 
 rec <-
-  trn %>%
-  recipes::recipe(fmla, data = .) %>%
+  recipes::recipe(fmla, data = trn) %>%
   recipes::update_role(
-    dplyr::matches('^nfl_id_'),
-    dplyr::matches('_id$'),
+    # dplyr::matches('^nfl_id_'),
+    # dplyr::matches('_id$'),
+    -idx,
     new_role = 'extra'
-  ) %>%
-  recipes::step_nzv(recipes::all_numeric(), -recipes::has_role('extra')) %>%
-  # recipes::step_corr(recipes::all_numeric(), -recipes::has_role('extra')) %>%
-  recipes::step_dummy(
-    recipes::all_nominal(),
-    -recipes::has_role('extra'),
-    -recipes::all_outcomes(),
-    one_hot = FALSE
   )
 rec
 
@@ -78,7 +83,7 @@ spec <-
     min_n = tune::tune(),
     tree_depth = tune::tune(),
     loss_reduction = tune::tune(),
-    # Randomnes
+    # Randomness
     sample_size = tune::tune(),
     mtry = tune::tune(),
     # Step size
@@ -88,23 +93,60 @@ spec <-
   parsnip::set_engine('xgboost')
 spec
 
+spec <-
+  parsnip::rand_forest(
+    trees = 1000
+  ) %>%
+  parsnip::set_mode('classification') %>%
+  parsnip::set_engine('ranger')
+spec
+
 wf <-
   workflows::workflow() %>%
   workflows::add_recipe(rec) %>%
   workflows::add_model(spec)
 
+fit <- parsnip::fit(wf, trn)
+
+spec <-
+  parsnip::rand_forest(
+    trees = 1000,
+    # Model complexity
+    min_n = tune::tune(),
+    # Randomness
+    mtry = tune::tune()
+  ) %>%
+  parsnip::set_mode('classification') %>%
+  parsnip::set_engine('ranger')
+spec
+
+wf <-
+  workflows::workflow() %>%
+  workflows::add_recipe(rec) %>%
+  workflows::add_model(spec)
+
+# params_grid <-
+#   dials::grid_latin_hypercube(
+#     dials::tree_depth(),
+#     dials::min_n(),
+#     dials::loss_reduction(),
+#     sample_size = dials::sample_prop(),
+#     dials::finalize(dials::mtry(), trn),
+#     dials::learn_rate(),
+#     size = 30
+# )
+# params_grid
+
+
 params_grid <-
   dials::grid_latin_hypercube(
-    dials::tree_depth(),
     dials::min_n(),
-    dials::loss_reduction(),
-    sample_size = dials::sample_prop(),
     dials::finalize(dials::mtry(), trn),
-    dials::learn_rate(),
-    size = 30
-)
+    size = 10
+  )
 params_grid
 
+folds <- trn %>% rsample::vfold_cv(strata = col_y)
 # fit <- wf %>% parsnip::fit(trn)
 # cl <- parallel::makeCluster(2)
 # doParallel::registerDoParallel(cl)
@@ -114,6 +156,6 @@ res_tune <-
     wf,
     resamples = folds,
     # metric = yardstick::metric_set(yardstick::roc_auc),
-    control = tune::control_grid(save_pred = TRUE, verbose = TRUE)
+    control = tune::control_grid(verbose = TRUE)
   )
-write_rds(res_tune, file.path('inst', 'res_tune.rds'))
+write_rds(res_tune, file.path('inst', 'res_tune_rf.rds'))
