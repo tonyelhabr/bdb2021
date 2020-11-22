@@ -1,7 +1,7 @@
 
-prep_do_by_week <- function(week = 1L, n_halfseconds = 7L, at = 'throw', ..., .verbose = .get_verbose(), .msg = 'Doing thing') {
+prep_do_by_week <- function(week = 1L, n_halfseconds = 7L, at = 'throw', ..., .msg = 'Doing thing') {
 
-  .display_info('{.msg} for week {week} at {Sys.time()}.', .verbose = .verbose)
+  .display_info('{.msg} for week {week} at {Sys.time()}.')
 
   tracking <- week %>% import_tracking()
   # tracking <- tracking %>% bdb2021::add_side_cols()

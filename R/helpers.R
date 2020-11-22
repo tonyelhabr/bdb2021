@@ -46,25 +46,6 @@
       rep('endroutes', length(events_end_routes))
     )
   )
-  # tibble::tribble(
-  #                      ~event, ~event_relabeled, ~event_order,
-  #                 "ball_snap",           "snap",           1L,
-  #              "pass_forward",          "throw",           2L,
-  #               "pass_shovel",          "throw",           2L,
-  #              "pass_forward",        "endrush",           3L,
-  #               "pass_shovel",        "endrush",           3L,
-  #                   "qb_sack",        "endrush",           3L,
-  #             "qb_strip_sack",        "endrush",           3L,
-  #                  "qb_spike",        "endrush",           3L,
-  #              "pass_arrived",        "arrival",           4L,
-  #       "pass_outcome_caught",      "endroutes",           5L,
-  #   "pass_outcome_incomplete",      "endroutes",           5L,
-  # "pass_outcome_interception",      "endroutes",           5L,
-  #    "pass_outcome_touchdown",      "endroutes",           5L,
-  #                   "qb_sack",      "endroutes",           5L,
-  #             "qb_strip_sack",      "endroutes",           5L,
-  #                  "qb_spike",      "endroutes",           5L
-  # )
 }})
 
 
