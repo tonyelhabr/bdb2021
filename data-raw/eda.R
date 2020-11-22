@@ -1,10 +1,88 @@
 
 library(tidyverse)
-data('receiver_intersections_relaxed_adj', package = 'bdb2021')
-features <-
-  arrow::read_parquet(file.path('inst', 'features.parquet'))
+data('receiver_intersections_relaxed', package = 'bdb2021')
+data('closest_defenders', package = 'bdb2021')
+data('personnel_and_rushers', package = 'bdb2021')
+receiver_intersections_relaxed
+closest_defenders
+personnel_and_rushers
+features <- arrow::read_parquet(file.path('inst', 'features.parquet'))
 features
 
+plays <- import_plays()
+# pbp <-
+#   import_nflfastr_pbp() # %>%
+#   # select(game_id = old_game_id, play_id, wpa, epa) %>%
+#   # mutate(across(c(game_id, play_id), as.integer))
+# pbp
+
+pick_play_meta_init <-
+  receiver_intersections_relaxed %>%
+  filter(has_intersection) %>%
+  unnest(intersection) %>%
+  distinct(week, game_id, play_id, sec_end = sec, nfl_id, nfl_id_intersect) %>%
+  # Data should be dropped with this join because we are only joining on one `sec` interval per play and `y_side`.
+  inner_join(
+    pick_play_ids_adj,
+    by = c('game_id', 'play_id', 'nfl_id', 'nfl_id_intersect', 'sec_end')
+  ) %>%
+  relocate(.data$sec_start, .data$sec_end, .after = dplyr::last_col()) %>%
+  # Just get the `target_nfl_id` first.
+  inner_join(
+    plays %>%
+      select(game_id, play_id, target_nfl_id),
+    by = c('game_id', 'play_id')
+  ) %>%
+  group_by(game_id, play_id, nfl_id, nfl_id_intersect, sec_start, sec_end) %>%
+  # There will be some NAs here due to missing `target_nfl_id`s.
+  # I think it's best to leave these in.
+  summarize(
+    target_is_intersect = sum(target_nfl_id == nfl_id)
+  ) %>%
+  ungroup()
+pick_play_meta_init
+
+plays_w_pick_info <-
+  plays %>%
+  left_join(
+    pick_play_meta_init %>%
+      nest(pick_play = -c(game_id, play_id)),
+    by = c('game_id', 'play_id')
+  ) %>%
+  left_join(
+    personnel_and_rushers %>%
+      # Remove unneeded columns.
+      # mutate(
+      #   rushers = map(rushers, ~select(.x, nfl_id, dist_to_ball_abs, idx_closest_to_ball))
+      # ),
+      select(-rushers) %>%
+      rename(n_qb_rusher = n_qb),
+    by = c('game_id', 'play_id')
+  ) %>%
+  mutate(
+    is_pick_play = map_lgl(pick_play, ~!is.null(.x)),
+    across(n_rusher, ~coalesce(.x, 0L)),
+    # pick_play = map_if(pick_play, is.null, ~tibble())
+  ) %>%
+  relocate(week, game_id, play_id, is_pick_play, pick_play)
+plays_w_pick_info
+plays_w_pick_info %>% filter(!is_pick_play)
+
+pick_play_meta <-
+  pick_play_meta_init %>%
+  # Now get other numbers from `plays`.
+  inner_join(
+    plays %>%
+      select(game_id, play_id, pass_result, epa, possession_team, quarter, down, yards_to_go),
+    by = c('game_id', 'play_id')
+  ) %>%
+  left_join(
+    pbp %>% rename(wpa_nflfastr = wpa, epa_nflfastr = epa),
+    by = c('game_id', 'play_id')
+  )
+pick_play_meta
+
+# TODO: Add this removal of bad plays to the generate features script.
 features_n <-
   features %>%
   count(week, game_id, play_id, frame_id, sec)
@@ -25,32 +103,6 @@ id_grid <-
   distinct(week, game_id, play_id, nfl_id) %>%
   crossing(sec = seq(0, 3, by = 0.5))
 id_grid
-
-res <-
-  features_min %>%
-  full_join(
-    id_grid
-  ) %>%
-  inner_join(
-    bind_rows(
-      receiver_intersections_relaxed_adj %>% select(-nfl_id_intersect),
-      receiver_intersections_relaxed_adj %>% select(-nfl_id) %>% rename(nfl_id = nfl_id_intersect)
-    )
-  )
-res
-
-# features_min_wide <-
-#   features_min %>%
-#   # full_join(id_grid) %>%
-#   select(-frame_id) %>%
-#   arrange(week, game_id, play_id, nfl_id) %>%
-#   fill(nfl_id_d, dist_d, .direction = 'down') %>%
-#   # crossing(sec = seq(0, 3, by = 0.5)) %>%
-#   # full_join(tibble(sec = seq(0, 3, by = 0.5)))
-#   pivot_wider(
-#     names_from = c('sec'),
-#     values_from = c('nfl_id_d', 'dist_d')
-#   )
 
 features_lag <-
   features_min %>%
