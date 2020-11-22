@@ -31,11 +31,12 @@ plot_play <-
            filename = sprintf('%s-%s.png', game_id, play_id),
            path = file.path(dir, filename),
            width = 10,
-           height = 12,
-           ...,
-           .verbose = .get_verbose()) {
+           height = 10,
+           ...) {
 
     # game_id = 2018090905; play_id = 783
+    # .display_info_var('Plotting {game_id}, {play_id}.')
+    .display_info('Plotting `game_id = {game_id}`, `play_id = {play_id}`.')
     meta <- tibble::tibble(game_id = game_id, play_id = play_id)
 
     has_week <- !is.null(week)
@@ -262,20 +263,20 @@ plot_play <-
       #   size = pts(12),
       #   vjust = 1,
       # ) +
+      # ggplot2::geom_text(
+      #   data = snap_frames,
+      #   ggplot2::aes(label = sprintf('(%s)', nfl_id), color = side),
+      #   hjust = 1.5 * sign,
+      #   show.legend = FALSE,
+      #   fontface = 'bold',
+      #   size = pts(10)
+      # ) +
       ggplot2::geom_text(
         data = snap_frames,
         ggplot2::aes(label = jersey_number, color = side),
         show.legend = FALSE,
         fontface = 'bold',
         size = pts(14)
-      ) +
-      ggplot2::geom_text(
-        data = snap_frames,
-        ggplot2::aes(label = sprintf('(%s)', nfl_id), color = side),
-        hjust = 1.5 * sign,
-        show.legend = FALSE,
-        fontface = 'bold',
-        size = pts(10)
       )
 
     p <-
@@ -286,12 +287,12 @@ plot_play <-
     p <-
       p +
       ggplot2::theme(
-        plot.title = ggtext::element_markdown(size = 16),
+        plot.title = ggtext::element_markdown(),
         plot.title.position = 'plot',
         strip.background = ggplot2::element_rect(fill = NA),
         # strip.text = ggplot2::element_text()
         plot.caption = ggtext::element_markdown(
-          size = 16,
+          # size = 12,
           hjust = 0,
           lineheight = 0
         ),
@@ -306,11 +307,11 @@ plot_play <-
                              game_id = {game$game_id}, play_id = {play$play_id}'),
         x = NULL, y = NULL
       )
-    print(p)
+    # print(p)
 
     if(!save) {
-      # return(p)
-      return(tracking)
+      return(p)
+      # return(tracking)
     }
 
     if(!dir.exists(dirname(path))) {
@@ -324,5 +325,5 @@ plot_play <-
       height = height,
       type = 'cairo'
     )
-    tracking
+    # tracking
   }
