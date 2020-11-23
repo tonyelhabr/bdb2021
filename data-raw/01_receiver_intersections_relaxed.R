@@ -4,7 +4,9 @@ identify_intersection_possibly <- purrr::possibly(identify_intersection, otherwi
 identify_intersections_until <- function(data, sec = 0.5) {
 
   .display_info('Identifying intersections up through {sec} seconds at {Sys.time()}.')
-
+  meta <- tibble::tibble(game_id = 2018090905L, play_id = 585L) # Week 1 example of an pick before 0.5 seconds
+  data <- receivers %>% inner_join(meta)
+  intersections_init %>% select(data) %>% unnest(data) -> data
   intersections_init <-
     data %>%
     # Need half-second frames before `sec`, so shouldn't filter those out.
@@ -12,7 +14,8 @@ identify_intersections_until <- function(data, sec = 0.5) {
     dplyr::select(.data$game_id, .data$play_id, .data$n_route, .data$nfl_id, .data$frame_id, .data$x, .data$y) %>%
     tidyr::nest(data = c(.data$nfl_id, .data$frame_id, .data$x, .data$y)) %>%
     dplyr::mutate(
-      intersection = purrr::map(data, identify_intersection_possibly)
+      # intersection = purrr::map(data, identify_intersection_possibly)
+      intersection = purrr::map(data, identify_intersection)
     )
 
   bad_intersections <-
@@ -54,9 +57,10 @@ identify_intersections_until <- function(data, sec = 0.5) {
   res
 }
 
-do_identify_receiver_intersections <- function(...) {
+do_identify_receiver_intersections <- function(n_halfseconds = 7L, ...) {
 
-  frames <- prep_do_by_week(.msg = 'Identifying closest receivers', ...)
+  frames <- prep_do_by_week(n_halfseconds = n_halfseconds, .msg = 'Identifying closest receivers', ...)
+  frames <- frames %>% add_side_cols()
 
   receivers <-
     frames %>%
@@ -68,7 +72,7 @@ do_identify_receiver_intersections <- function(...) {
         dplyr::filter(.data$sec == 0) %>%
         # Only consider receivers not in the backfield nor starting in the middle
         # of the field.
-        bdb2021::drop_ineligible_pick_route_frames() %>%
+        drop_ineligible_pick_route_frames() %>%
         dplyr::group_by(.data$game_id, .data$play_id, .data$frame_id) %>%
         dplyr::mutate(n_route = dplyr::n()) %>%
         dplyr::ungroup() %>%
@@ -104,33 +108,56 @@ pick_play_ids_adj <-
   receiver_intersections_relaxed %>%
   dplyr::filter(has_intersection) %>%
   tidyr::unnest(intersection) %>%
-  dplyr::filter(nfl_id < nfl_id_intersect) %>%
+  # dplyr::filter(nfl_id < nfl_id_intersect) %>%
   dplyr::select(
     .data$week,
     .data$game_id,
     .data$play_id,
     .data$n_route,
     .data$n_intersection,
-    nfl_id,
-    nfl_id_intersect,
+    .data$nfl_id,
+    .data$nfl_id_intersect,
     .data$sec
   ) %>%
   dplyr::group_by(.data$game_id, .data$play_id, nfl_id, nfl_id_intersect) %>%
   dplyr::filter(.data$sec == min(.data$sec)) %>%
   dplyr::ungroup() %>%
-  dplyr::rename(sec_end = .data$sec) %>%
-  dplyr::mutate(sec_start = .data$sec_end - 0.5) %>%
-  dplyr::relocate(.data$sec_start, .data$sec_end, .after = dplyr::last_col()) %>%
-  dplyr::arrange(.data$week, .data$game_id, .data$play_id, .data$sec_start, nfl_id, nfl_id_intersect)
+  dplyr::arrange(.data$week, .data$game_id, .data$play_id, .data$sec, .data$nfl_id, .data$nfl_id_intersect)
 pick_play_ids_adj
 
 receiver_intersections_relaxed_adj <-
   pick_play_ids_adj %>%
   dplyr::semi_join(
-    receiver_intersections_relaxed %>%
-      dplyr::rename(sec_end = .data$sec),
-    by = c('week', 'game_id', 'play_id', 'n_route', 'n_intersection', 'sec_end')
+    receiver_intersections_relaxed,
+    by = c('week', 'game_id', 'play_id', 'n_route', 'n_intersection', 'sec')
   )
+
+receiver_intersections_relaxed_adj <-
+  receiver_intersections_relaxed_adj %>%
+  inner_join(
+    features %>%
+      select(game_id, play_id, sec, nfl_id, x, y),
+    by = c('game_id', 'play_id', 'nfl_id', 'sec')
+  ) %>%
+  inner_join(
+    features %>%
+      select(game_id, play_id, sec, nfl_id, x, y) %>%
+      rename_with(~sprintf('%s_intersect', .x), c(nfl_id, x, y)),
+    by = c('game_id', 'play_id', 'nfl_id_intersect', 'sec')
+  ) %>%
+  mutate(
+    # is_high = if_else(x > x_intersect, TRUE, FALSE)
+    x_diff = x - x_intersect
+  ) %>%
+  group_by(game_id, play_id, sec) %>%
+  mutate(
+    x_idx = row_number(x_diff),
+    x_idx_frac = x_idx / max(x_idx),
+  ) %>%
+  ungroup() %>%
+  mutate(is_lo = x_idx_frac <= 0.5) %>%
+  select(-x_idx_frac)
+receiver_intersections_relaxed_adj
 
 usethis::use_data(receiver_intersections_relaxed, overwrite = TRUE)
 usethis::use_data(pick_play_ids_adj, overwrite = TRUE)

@@ -18,12 +18,12 @@ identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
   if(pad_backwards) {
     first_x <-
       data %>%
-      dplyr::filter(frame_id == min(frame_id))
+      dplyr::filter(.data$frame_id == min(.data$frame_id))
     padded_x <-
       first_x %>%
       dplyr::mutate(
-        frame_id = frame_id - 5L,
-        x = x - !!pad_x
+        frame_id = .data$frame_id - 5L,
+        x = .data$x - !!pad_x
       )
     data <-
       dplyr::bind_rows(padded_x, data)
@@ -31,7 +31,7 @@ identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
 
   data_trans <-
     data %>%
-    tidyr::nest(data = -c(nfl_id)) %>%
+    tidyr::nest(data = -c(.data$nfl_id)) %>%
     dplyr::mutate(
       line =
         purrr::map(
@@ -43,15 +43,19 @@ identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
     ) %>%
     dplyr::select(nfl_id, line)
   # browser()
-  # line1 <- data_trans %>% slice(1) %>% pull(line) %>% pluck(1)
-  # line2 <- data_trans %>% slice(2) %>% pull(line) %>% pluck(1)
-  # sf::st_intersects(line1, line2) %>% as.integer()
+  line1 <- data_trans %>% slice(2) %>% pull(line) %>% pluck(1)
+  line2 <- data_trans %>% slice(3) %>% pull(line) %>% pluck(1)
+  sf::st_intersects(line1, line2) %>% as.integer()
+  sf::st_intersection(line1, line2) %>% as.numeric()
+  sf::st_join(line1, line2)
+  # 2541316
+  # 2543646
   res <-
     tidyr::crossing(
       nfl_id = nfl_ids,
       nfl_id_intersect = nfl_ids
     ) %>%
-    filter(nfl_id != nfl_id_intersect) %>%
+    dplyr::filter(.data$nfl_id != .data$nfl_id_intersect) %>%
     dplyr::inner_join(data_trans, by = 'nfl_id') %>%
     dplyr::inner_join(
       data_trans %>%
@@ -65,9 +69,10 @@ identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
           ~sf::st_intersects(..1, ..2) %>%
             as.integer()
         ),
-      has_intersection = purrr::map_lgl(intersection, ~.x > 0L)
+      has_intersection = purrr::map_lgl(.data$intersection, ~.x > 0L)
     ) %>%
-    dplyr::filter(has_intersection)
+    dplyr::filter(.data$has_intersection)
+  res
 
   if(nrow(res) == 0L) {
     return(tibble::tibble())
@@ -75,6 +80,6 @@ identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
 
   res <-
     res %>%
-    dplyr::select(nfl_id, nfl_id_intersect)
+    dplyr::select(.data$nfl_id, .data$nfl_id_intersect)
   res
 }

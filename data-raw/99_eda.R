@@ -1,30 +1,21 @@
 
 library(tidyverse)
 data('receiver_intersections_relaxed', package = 'bdb2021')
-# data('closest_defenders', package = 'bdb2021')
 data('personnel_and_rushers', package = 'bdb2021')
 data('players_from_tracking', package = 'bdb2021')
 features <- arrow::read_parquet(file.path('inst', 'features.parquet'))
 plays <- import_plays()
 pbp <- import_nflfastr_pbp()
-receiver_intersections_relaxed
-# closest_defenders
-personnel_and_rushers
-features
-plays
-pbp
-players_from_tracking
 
 pick_play_meta_init <-
   receiver_intersections_relaxed_adj %>%
-  rename(sec = sec_end) %>%
   # Just get the `target_nfl_id` first.
   inner_join(
     plays %>%
       select(game_id, play_id, target_nfl_id),
     by = c('game_id', 'play_id')
   ) %>%
-  group_by(game_id, play_id, nfl_id, nfl_id_intersect, sec) %>%
+  group_by(game_id, play_id, nfl_id, nfl_id_intersect, is_lo, sec) %>%
   # There will be some NAs here due to missing `target_nfl_id`s.
   # I think it's best to leave these in.
   summarize(
@@ -71,21 +62,22 @@ pick_play_meta <-
   )
 pick_play_meta
 
-pick_play_meta %>%
-  # filter(pass_result == 'C') %>%
-  group_by(target_is_intersect, sec, pass_result) %>%
-  count()
+# TODO: Need a data set describing how defenders played it
 
 pick_play_meta_viz <-
   pick_play_meta %>%
   # filter(pass_result == 'C') %>%
-  mutate(across(pass_result, ~if_else(pass_result == 'C', 'Good', 'Bad'))) %>%
-  group_by(target_is_intersect, sec, pass_result) %>%
+  mutate(pass_complete = if_else(pass_result == 'C', TRUE, FALSE)) %>%
+  filter(!is.na(target_is_intersect)) %>%
+  group_by(sec, pass_complete, is_lo, target_is_intersect) %>%
   mutate(prnk = percent_rank(epa)) %>%
   filter(prnk == min(prnk) | prnk == max(prnk)) %>%
   ungroup() %>%
   # filter(prnk == 0 | prnk == 1) %>%
-  arrange(sec, pass_result, target_is_intersect) %>%
+  mutate(high_epa = if_else(prnk == 1, TRUE, FALSE)) %>%
+  filter(high_epa == pass_complete) %>%
+  arrange(sec, pass_complete, is_lo, target_is_intersect) %>%
+  filter(is_lo) %>%
   inner_join(plays %>% select(game_id, play_id, nfl_id_target = target_nfl_id, play_result)) %>%
   inner_join(players_from_tracking) %>%
   inner_join(players_from_tracking %>% rename_with(~sprintf('%s_intersect', .x), c(nfl_id, display_name, jersey_number, position))) %>%
@@ -96,25 +88,23 @@ pick_play_meta_viz <-
   ) %>%
   mutate(
     lab = glue::glue('Pick between {display_name} ({jersey_number}, {position}) and {display_name_intersect} ({jersey_number_intersect}, {position_intersect}) between {sec-0.5} and {sec} seconds.
-                     Target: {display_name_target} ({jersey_number_target}, {position_target}). Play result: {pass_result}. Yards gained: {play_result}.
-                     BDB EPA: {scales::number(epa, accuracy = 0.01)}, nflfastR EPA: {scales::number(epa_nflfastr, accuracy = 0.01)}, nflfastR WPA: {scales::number(wpa_nflfastr, accuracy = 0.01)})'),
-    path = file.path('inst', sprintf('%s-%s-is_pick_play=%s-sec=%.1f-pass_result=%s-target_is_intersect=%s.png', game_id, play_id, TRUE, sec, pass_result, target_is_intersect))
+                     Pick to underneath route: {is_lo}, Target: {display_name_target} ({jersey_number_target}, {position_target}). Play result: {pass_result}. Yards gained: {play_result}.
+                     BDB EPA: {scales::number(epa, accuracy = 0.01)}, nflfastR EPA: {scales::number(epa_nflfastr, accuracy = 0.01)}, nflfastR WPA: {scales::number(wpa_nflfastr, accuracy = 0.01)}'),
+    path = file.path('inst', sprintf('is_pick_play=%s-sec=%1.1f-pass_complete=%s-is_lo=%s-target_is_intersect=%s-high_epa=%s-%s-%s.png', 'Y', sec, ifelse(pass_result == 'Good', 'Y', 'N'), ifelse(is_lo, 'Y', 'N'), ifelse(target_is_intersect, 'Y', 'N'), ifelse(high_epa, 'Y', 'N'), game_id, play_id))
   )
-pick_play_meta_viz
+pick_play_meta_viz %>% arrange(desc(epa))
 
 res_viz <-
   pick_play_meta_viz %>%
+  # slice(c(21:28)) %>%
+  filter(sec >= 1, sec <= 2) %>%
   mutate(
     viz = pmap(
       list(game_id, play_id, lab),
       ~plot_play(game_id = ..1, play_id = ..2, save = FALSE) +
         labs(subtitle = ..3),
-    )
-  )
-
-res_viz %>%
-  mutate(
-    path = map2(viz, path, ~ggsave(filename = ..2, plot = ..1, unit = 'in', height = 10, width = 10))
+    ),
+    res = map2(viz, path, ~ggsave(filename = ..2, plot = ..1, unit = 'in', height = 10, width = 10))
   )
 
 pick_play_agg <-
@@ -158,7 +148,7 @@ id_grid <-
   crossing(sec = seq(0, 3, by = 0.5))
 id_grid
 
-features_lag <-
+features_lag_init <-
   features_min %>%
   group_by(game_id, play_id, nfl_id) %>%
   mutate(
@@ -168,25 +158,28 @@ features_lag <-
   ungroup() %>%
   mutate(across(has_same_init_defender, ~if_else(sec == 0, NA, .x))) %>%
   left_join(
-    bind_rows(
-      receiver_intersections_relaxed_adj %>%
-        select(week, game_id, play_id, nfl_id, sec = sec_end),
-      receiver_intersections_relaxed_adj %>%
-        select(week, game_id, play_id, nfl_id = nfl_id_intersect, sec = sec_end)
-    ) %>%
-      mutate(has_intersect = TRUE) %>%
-      arrange(week, game_id, play_id, nfl_id, sec)
+    receiver_intersections_relaxed_adj %>%
+      select(week, game_id, play_id, nfl_id, sec, is_lo) %>%
+      mutate(has_intersect = TRUE)
   ) %>%
   mutate(
     across(has_intersect, ~coalesce(.x, FALSE)),
     across(has_intersect, ~if_else(sec == 0, NA, .x))
   )
-features_lag
+features_lag_init
+
+features_lag_n_def <-
+  features_lag_init %>%
+  group_by(week, game_id, play_id, nfl_id) %>%
+  summarize(n_def = n_distinct(nfl_id_d)) %>%
+  ungroup()
+features_lag_n_def %>% count(n_def)
+features_lag_n_def %>% count(n_def)
 
 features_lag <-
-  features_lag %>%
+  features_lag_init %>%
   left_join(
-    features_lag %>%
+    features_lag_init %>%
       filter(has_intersect) %>%
       select(-sec) %>%
       mutate(had_intersect = TRUE)
@@ -205,7 +198,6 @@ features_lag
 
 features_lag_long <-
   features_lag %>%
-  select(-nfl_id_intersect) %>%
   rename(prev = has_same_prev_defender, init = has_same_init_defender) %>%
   pivot_longer(
     c(prev, init),
@@ -218,13 +210,33 @@ features_lag_long <-
     names_to = 'intersect_cnd',
     values_to = 'intersect_lgl'
   )
-features_lag_long %>% filter(sec > 0) %>% filter(intersect_cnd == 'past')
+features_lag_long
+
+# features_lag_long %>% filter(sec > 0) %>% filter(intersect_cnd == 'past')
+features_lag_long %>%
+  filter(sec > 0) %>%
+  filter(intersect_cnd == 'current' & defender_cnd == 'prev') %>%
+  inner_join(
+    plays %>%
+      select(game_id, play_id, pass_result, epa),
+    by = c('game_id', 'play_id')
+  ) %>%
+  left_join(
+    pbp %>%
+      select(game_id, play_id, wpa_nflfastr = wpa, epa_nflfastr = epa),
+    by = c('game_id', 'play_id')
+  )
+  ggplot() +
+  aes(x = sec, y = epa) +
+  geom_point()
+
+
 
 features_lag_n <-
   features_lag_long %>%
   filter(sec > 0) %>%
-  count(sec, defender_cnd, defender_lgl, intersect_cnd, intersect_lgl) %>%
-  group_by(sec, defender_cnd, intersect_cnd) %>%
+  count(sec, is_lo, defender_cnd, defender_lgl, intersect_cnd, intersect_lgl) %>%
+  group_by(sec, is_lo, defender_cnd, intersect_cnd) %>%
   mutate(
     total = sum(n),
     frac = n / total
@@ -239,7 +251,9 @@ features_lag_n <-
   # ) %>%
   # ungroup()
 features_lag_n %>% filter(intersect_cnd == 'past')
+
 features_lag_n %>%
+  filter(is_lo != FALSE) %>%
   filter(intersect_cnd == 'past', defender_cnd == 'init') %>%
   mutate(grp = sprintf('Is pick? %s. Is initial defender? %s.', ifelse(intersect_lgl, 'Y', 'N'), ifelse(defender_lgl, 'Y', 'N'))) %>%
   # group_by(sec) %>%
@@ -247,7 +261,7 @@ features_lag_n %>%
   ggplot() +
   aes(x = sec, y = n) +
   geom_col(aes(fill = grp), show.legend = FALSE) +
-  facet_wrap(~grp, scales = 'free')
+  facet_wrap(~grp, scales = 'fixed')
 
 
 features_lag_nn <-
