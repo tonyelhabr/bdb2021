@@ -3,19 +3,22 @@ library(tidyverse)
 data('receiver_intersections_relaxed', package = 'bdb2021')
 data('personnel_and_rushers', package = 'bdb2021')
 data('players_from_tracking', package = 'bdb2021')
+data('routes', package = 'bdb2021')
 features <- arrow::read_parquet(file.path('inst', 'features.parquet'))
 plays <- import_plays()
 pbp <- import_nflfastr_pbp()
+.sec_cutoff <- 2
 
 pick_play_meta_init <-
   receiver_intersections_relaxed_adj %>%
+  filter(sec <= .sec_cutoff) %>%
   # Just get the `target_nfl_id` first.
   inner_join(
     plays %>%
       select(game_id, play_id, target_nfl_id),
     by = c('game_id', 'play_id')
   ) %>%
-  group_by(game_id, play_id, nfl_id, nfl_id_intersect, is_lo, sec) %>%
+  group_by(week, game_id, play_id, nfl_id, nfl_id_intersect, is_lo, sec) %>%
   # There will be some NAs here due to missing `target_nfl_id`s.
   # I think it's best to leave these in.
   summarize(
@@ -29,14 +32,14 @@ plays_w_pick_info <-
   left_join(
     pick_play_meta_init %>%
       # Keep the pick play to one row per play at maximum
-      nest(pick_data = -c(game_id, play_id)),
+      nest(pick_data = -c(week, game_id, play_id)),
     by = c('game_id', 'play_id')
   ) %>%
   left_join(
     personnel_and_rushers %>%
       select(-rushers) %>%
       rename(n_qb_rusher = n_qb),
-    by = c('game_id', 'play_id')
+    by = c('week', 'game_id', 'play_id')
   ) %>%
   mutate(
     is_pick_play = map_lgl(pick_data, ~!is.null(.x)),
@@ -47,57 +50,125 @@ plays_w_pick_info <-
 plays_w_pick_info
 plays_w_pick_info %>% filter(!is_pick_play)
 
-pick_play_meta <-
+pick_play_meta_init %>%
+  count(week, game_id, play_id, nfl_id, nfl_id_intersect, is_lo, sec, target_is_intersect) %>%
+  filter(n > 1L)
+
+library(tidylog)
+pick_plays <-
   pick_play_meta_init %>%
-  # Now get other numbers from `plays`.
+  # Now get `epa` numbers from `plays`.
   inner_join(
     plays %>%
-      select(game_id, play_id, pass_result, epa),
+      select(game_id, play_id, pass_result, epa, nfl_id_target = target_nfl_id),
     by = c('game_id', 'play_id')
   ) %>%
   left_join(
     pbp %>%
       select(game_id, play_id, wpa_nflfastr = wpa, epa_nflfastr = epa),
     by = c('game_id', 'play_id')
+  ) %>%
+  left_join(
+    players_from_tracking,
+    by = c('week', 'game_id', 'nfl_id')
+  ) %>%
+  left_join(
+    players_from_tracking %>%
+      rename_with(~sprintf('%s_intersect', .x), c(nfl_id, display_name, jersey_number, position)),
+    by = c('week', 'game_id', 'nfl_id_intersect')
+  ) %>%
+  left_join(
+    players_from_tracking %>%
+      rename_with(~sprintf('%s_target', .x), c(nfl_id, display_name, jersey_number, position)),
+    by = c('week', 'game_id', 'nfl_id_target')
+  ) %>%
+  mutate(
+    across(c(nfl_id_target, jersey_number), ~coalesce(.x, -1L)),
+    across(c(display_name, position), ~coalesce(.x, '?'))
+  ) %>%
+  left_join(
+    routes,
+    by = c('week', 'game_id', 'play_id', 'nfl_id')
+  ) %>%
+  left_join(
+    routes %>%
+      rename_with(~sprintf('%s_intersect', .x), c(nfl_id, route)),
+    by = c('week', 'game_id', 'play_id', 'nfl_id_intersect')
   )
-pick_play_meta
+pick_plays
 
-# TODO: Need a data set describing how defenders played it
+plays_w_pick_info_final <-
+  plays_w_pick_info %>%
+  select(-pick_data) %>%
+  select(-is_pick_play) %>%
+  left_join(
+    pick_play_ids_adj %>%
+      filter(sec <= 2L) %>%
+      select(game_id, play_id) %>%
+      mutate(is_pick_play = TRUE)
+  ) %>%
+  # mutate(across(is_pick_play, ~coalesce(.x, FALSE)))
+  mutate(play_type = if_else(is.na(is_pick_play), 'other_play', 'pick_play'))
 
+compare_pick_plays_to_other_plays_discrete <- function(col) {
+
+    col_sym <- col %>% sym()
+    res <-
+      data %>%
+      count(play_type, !!col_sym) %>%
+      pivot_wider(
+        names_from = play_type,
+        values_from = n
+      ) %>%
+      mutate(
+        total = pick_play + other_play,
+        frac = pick_play / total
+      )
+    res
+  }
+
+plays %>% names()
+plays_discrete_input_cols <- c('quarter', 'down', 'yards_to_go', 'possession_team', 'defenders_in_the_box', 'number_of_pass_rushers', 'personnel_d', 'type_dropback', 'is_defensive_pi', 'n_rb', 'n_wr', 'n_te', 'n_dl', 'n_lb', 'n_db') #
+plays_continuous_input_cols <- c('yards_to_go', 'absolute_yard_number')
+added_plays_continuous_input_cols <- c('score_difference', 'los', 'wp')
+plays_continuous_output_cols <- c('epa', 'wpa')
+c('down', 'quarter', 'yards_to_go', 'number_of_pass_rushers') %>%
+  map(~compare_pick_plays_to_other_plays(col = .x))
+res_prop_test <-
+  plays_discrete_input_cols %>%
+  tibble(col = .) %>%
+  mutate(data = map(col, compare_pick_plays_to_other_plays_discrete)) %>%
+  mutate(res = map(data, ~.x %>% drop_na() %>% prop.test(pick_play, other_play) %>% broom::tidy())) %>%
+  unnest(res)
+
+# TODO: Need a data set describing how defenders played it and show these in visual examples.
+
+# Pick an example play from here
 pick_play_meta_viz <-
-  pick_play_meta %>%
-  # filter(pass_result == 'C') %>%
+  pick_plays %>%
   mutate(pass_complete = if_else(pass_result == 'C', TRUE, FALSE)) %>%
   filter(!is.na(target_is_intersect)) %>%
   group_by(sec, pass_complete, is_lo, target_is_intersect) %>%
   mutate(prnk = percent_rank(epa)) %>%
   filter(prnk == min(prnk) | prnk == max(prnk)) %>%
   ungroup() %>%
-  # filter(prnk == 0 | prnk == 1) %>%
   mutate(high_epa = if_else(prnk == 1, TRUE, FALSE)) %>%
   filter(high_epa == pass_complete) %>%
   arrange(sec, pass_complete, is_lo, target_is_intersect) %>%
   filter(is_lo) %>%
-  inner_join(plays %>% select(game_id, play_id, nfl_id_target = target_nfl_id, play_result)) %>%
-  inner_join(players_from_tracking) %>%
-  inner_join(players_from_tracking %>% rename_with(~sprintf('%s_intersect', .x), c(nfl_id, display_name, jersey_number, position))) %>%
-  left_join(players_from_tracking %>% rename_with(~sprintf('%s_target', .x), c(nfl_id, display_name, jersey_number, position))) %>%
-  mutate(
-    across(c(nfl_id_target, jersey_number), ~coalesce(.x, -1L)),
-    across(c(display_name, position), ~coalesce(.x, '?'))
-  ) %>%
+  inner_join(plays %>% select(game_id, play_id, yards_gained = play_result)
   mutate(
     lab = glue::glue('Pick between {display_name} ({jersey_number}, {position}) and {display_name_intersect} ({jersey_number_intersect}, {position_intersect}) between {sec-0.5} and {sec} seconds.
-                     Pick to underneath route: {is_lo}, Target: {display_name_target} ({jersey_number_target}, {position_target}). Play result: {pass_result}. Yards gained: {play_result}.
+                     Pick to underneath route: {is_lo}, Target: {display_name_target} ({jersey_number_target}, {position_target}). Play result: {pass_result}. Yards gained: {yards_gained}.
                      BDB EPA: {scales::number(epa, accuracy = 0.01)}, nflfastR EPA: {scales::number(epa_nflfastr, accuracy = 0.01)}, nflfastR WPA: {scales::number(wpa_nflfastr, accuracy = 0.01)}'),
-    path = file.path('inst', sprintf('is_pick_play=%s-sec=%1.1f-pass_complete=%s-is_lo=%s-target_is_intersect=%s-high_epa=%s-%s-%s.png', 'Y', sec, ifelse(pass_result == 'Good', 'Y', 'N'), ifelse(is_lo, 'Y', 'N'), ifelse(target_is_intersect, 'Y', 'N'), ifelse(high_epa, 'Y', 'N'), game_id, play_id))
+    path = file.path('inst', sprintf('is_pick_play=%s-sec=%1.1f-pass_complete=%s-is_lo=%s-target_is_intersect=%s-high_epa=%s-%s-%s.png', 'Y', sec, ifelse(pass_complete, 'Y', 'N'), ifelse(is_lo, 'Y', 'N'), ifelse(target_is_intersect, 'Y', 'N'), ifelse(high_epa, 'Y', 'N'), game_id, play_id))
   )
-pick_play_meta_viz %>% arrange(desc(epa))
+pick_play_meta_viz
 
 res_viz <-
   pick_play_meta_viz %>%
   # slice(c(21:28)) %>%
-  filter(sec >= 1, sec <= 2) %>%
+  filter(target_is_intersect & is_lo & sec >= 1 & sec <= 3) %>%
   mutate(
     viz = pmap(
       list(game_id, play_id, lab),
@@ -108,7 +179,7 @@ res_viz <-
   )
 
 pick_play_agg <-
-  pick_play_meta %>%
+  pick_plays %>%
   # Drop the plays where the targeted receiver is NA.
   # drop_na() %>%
   # filter(!is.na(target_is_intersect)) %>%
@@ -126,26 +197,18 @@ pick_play_agg
 
 
 # ----
-# TODO: Add this removal of bad plays to the generate features script.
-features_n <-
-  features %>%
-  count(week, game_id, play_id, frame_id, sec)
-bad_features <- features_n %>% filter(n != 5L)
-# tracking <- import_tracking(3) # Some weird stuff in week 3 (game_id == 2018092300, play_id == 740; game_id == 2018092301, play_id == 477)
-
 # Not sure why I have stuff beyond 3.5 seconds into the play. I thought I explicitly cut that out (with `n_halfseconds`)?
 features_min <-
   features %>%
-  anti_join(bad_features %>% distinct(game_id, play_id)) %>%
-  filter(sec < 3.5) %>%
+  filter(event %>% str_detect('sec$') & sec <= 2) %>%
   select(week, game_id, play_id, frame_id, sec, nfl_id, nfl_id_d, dist_d)
 features_min
 
-# For "expanding" plays less than 3 seconds.
+# For "expanding" plays less than `sec_cutoff` seconds.
 id_grid <-
   features_min %>%
   distinct(week, game_id, play_id, nfl_id) %>%
-  crossing(sec = seq(0, 3, by = 0.5))
+  crossing(sec = seq(0, 2, by = 0.5))
 id_grid
 
 features_lag_init <-
