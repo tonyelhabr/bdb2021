@@ -5,6 +5,7 @@ data('personnel_and_rushers', package = 'bdb2021')
 data('players_from_tracking', package = 'bdb2021')
 data('routes', package = 'bdb2021')
 features <- arrow::read_parquet(file.path('inst', 'features.parquet'))
+
 plays <- import_plays()
 pbp <- import_nflfastr_pbp()
 .sec_cutoff <- 2
