@@ -4,7 +4,7 @@ data('receiver_intersections_relaxed', package = 'bdb2021')
 data('personnel_and_rushers', package = 'bdb2021')
 data('players_from_tracking', package = 'bdb2021')
 data('routes', package = 'bdb2021')
-features <- arrow::read_parquet(file.path('inst', 'features.parquet'))
+features <- file.path('inst', 'features.parquet') %>% arrow::read_parquet()
 
 plays <- import_plays()
 pbp <- import_nflfastr_pbp()
@@ -25,7 +25,8 @@ pick_play_meta_init <-
   summarize(
     target_is_intersect = sum(target_nfl_id == nfl_id)
   ) %>%
-  ungroup()
+  ungroup() %>%
+  select(-week)
 pick_play_meta_init
 
 plays_w_pick_info <-
@@ -33,21 +34,21 @@ plays_w_pick_info <-
   left_join(
     pick_play_meta_init %>%
       # Keep the pick play to one row per play at maximum
-      nest(pick_data = -c(week, game_id, play_id)),
+      nest(pick_data = -c(game_id, play_id)),
     by = c('game_id', 'play_id')
   ) %>%
   left_join(
     personnel_and_rushers %>%
       select(-rushers) %>%
       rename(n_qb_rusher = n_qb),
-    by = c('week', 'game_id', 'play_id')
+    by = c('game_id', 'play_id')
   ) %>%
   mutate(
     is_pick_play = map_lgl(pick_data, ~!is.null(.x)),
     across(n_rusher, ~coalesce(.x, 0L)),
     # pick_data = map_if(pick_data, is.null, ~tibble())
   ) %>%
-  relocate(week, game_id, play_id, is_pick_play, pick_data)
+  relocate(game_id, play_id, is_pick_play, pick_data)
 plays_w_pick_info
 plays_w_pick_info %>% filter(!is_pick_play)
 
@@ -55,7 +56,7 @@ pick_play_meta_init %>%
   count(week, game_id, play_id, nfl_id, nfl_id_intersect, is_lo, sec, target_is_intersect) %>%
   filter(n > 1L)
 
-library(tidylog)
+# library(tidylog)
 pick_plays <-
   pick_play_meta_init %>%
   # Now get `epa` numbers from `plays`.
@@ -71,17 +72,17 @@ pick_plays <-
   ) %>%
   left_join(
     players_from_tracking,
-    by = c('week', 'game_id', 'nfl_id')
+    by = c( 'game_id', 'nfl_id')
   ) %>%
   left_join(
     players_from_tracking %>%
       rename_with(~sprintf('%s_intersect', .x), c(nfl_id, display_name, jersey_number, position)),
-    by = c('week', 'game_id', 'nfl_id_intersect')
+    by = c( 'game_id', 'nfl_id_intersect')
   ) %>%
   left_join(
     players_from_tracking %>%
       rename_with(~sprintf('%s_target', .x), c(nfl_id, display_name, jersey_number, position)),
-    by = c('week', 'game_id', 'nfl_id_target')
+    by = c( 'game_id', 'nfl_id_target')
   ) %>%
   mutate(
     across(c(nfl_id_target, jersey_number), ~coalesce(.x, -1L)),
@@ -89,12 +90,12 @@ pick_plays <-
   ) %>%
   left_join(
     routes,
-    by = c('week', 'game_id', 'play_id', 'nfl_id')
+    by = c( 'game_id', 'play_id', 'nfl_id')
   ) %>%
   left_join(
     routes %>%
       rename_with(~sprintf('%s_intersect', .x), c(nfl_id, route)),
-    by = c('week', 'game_id', 'play_id', 'nfl_id_intersect')
+    by = c( 'game_id', 'play_id', 'nfl_id_intersect')
   )
 pick_plays
 
@@ -383,7 +384,7 @@ cols_rusher <- nms %>% str_subset('rusher')
 col_y <- 'idx_o_target'
 cols_id <-
   c(
-    'week',
+
     'game_id',
     'play_id',
     'frame_id'
