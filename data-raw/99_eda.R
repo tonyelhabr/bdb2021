@@ -99,49 +99,87 @@ pick_plays <-
   )
 pick_plays
 
-plays_w_pick_info_final <-
-  plays_w_pick_info %>%
-  select(-pick_data) %>%
-  select(-is_pick_play) %>%
-  left_join(
-    pick_play_ids_adj %>%
-      filter(sec <= 2L) %>%
-      select(game_id, play_id) %>%
-      mutate(is_pick_play = TRUE)
-  ) %>%
-  # mutate(across(is_pick_play, ~coalesce(.x, FALSE)))
-  mutate(play_type = if_else(is.na(is_pick_play), 'other_play', 'pick_play'))
+.paste_collapse <-
+  function(...,
+           start = '(',
+           end = ')',
+           collapse = paste0(end, '|', start),
+           sep = '') {
+    paste0(start, paste(..., collapse = collapse, sep = sep), end)
+  }
 
-compare_pick_plays_to_other_plays_discrete <- function(col) {
-
-    col_sym <- col %>% sym()
-    res <-
-      data %>%
-      count(play_type, !!col_sym) %>%
-      pivot_wider(
-        names_from = play_type,
-        values_from = n
-      ) %>%
-      mutate(
-        total = pick_play + other_play,
-        frac = pick_play / total
-      )
-    res
+.paste_fmla_vars <-
+  function(x, include = TRUE, sep = '') {
+    backtick <- '`'
+    sign <- ifelse(include, '+', '-')
+    collapse <- paste0(backtick, ' ', sign, ' ', backtick)
+    paste0(backtick, paste(x, collapse = collapse, sep = sep), backtick)
   }
 
 plays %>% names()
-plays_discrete_input_cols <- c('quarter', 'down', 'yards_to_go', 'possession_team', 'defenders_in_the_box', 'number_of_pass_rushers', 'personnel_d', 'type_dropback', 'is_defensive_pi', 'n_rb', 'n_wr', 'n_te', 'n_dl', 'n_lb', 'n_db') #
-plays_continuous_input_cols <- c('yards_to_go', 'absolute_yard_number')
-added_plays_continuous_input_cols <- c('score_difference', 'los', 'wp')
-plays_continuous_output_cols <- c('epa', 'wpa')
-c('down', 'quarter', 'yards_to_go', 'number_of_pass_rushers') %>%
-  map(~compare_pick_plays_to_other_plays(col = .x))
+cols_d <- c('quarter', 'down', 'defenders_in_the_box', 'number_of_pass_rushers',  'type_dropback', 'is_defensive_pi') # 'personnel_o', 'personnel_d', 'n_rb', 'n_wr', 'n_te', 'n_dl', 'n_lb', 'n_db') # 'possession_team',
+cols_c_i_added_nflfastr <- 'wp'
+cols_c_i_added <- c(cols_c_i_added_nflfastr, 'pre_snap_score_diff')
+cols_c_i <- c(cols_c_i_added, 'yards_to_go', 'absolute_yardline_number', 'pre_snap_home_score') # , 'pre_snap_visitor_score')
+
+# cols_c_o <- c('epa', 'wpa')
+# cols_unused <- c('game_id', 'play_id', 'play_description')
+
+plays_w_pick_info_final <-
+  plays_w_pick_info %>%
+  select(-pick_data) %>%
+  # mutate(across(is_pick_play, ~coalesce(.x, FALSE)))
+  mutate(
+    pick_play_type = if_else(is_pick_play, 'other_play', 'pick_play'),
+    across(is_pick_play, ~if_else(.x, '1', '0') %>% factor()),
+    pre_snap_score_diff = pre_snap_home_score - pre_snap_visitor_score
+  ) %>%
+  left_join(
+    pbp %>% select(game_id, play_id, cols_c_i_added_nflfastr)
+  ) %>%
+  mutate(
+    across(one_of(cols_d), factor)
+  )
+plays_w_pick_info_final %>% filter(is.na(wp))
+glm_bi <- partial(glm, data = plays_w_pick_info_final, family = 'binomial', ... = )
+fmla_x <- .paste_fmla_vars(c(cols_d, cols_c_i, cols_c_i_added)) # c(cols_d, cols_c_i, cols_c_i_added))
+fit_glm <-
+  paste0('is_pick_play ~ ', fmla_x) %>%
+  glm_bi()
+
+coefs <- fit_glm %>% broom::tidy()
+coefs %>% filter(p.value < 0.05)
+
+
+compare_pick_plays_to_other_plays_discrete <- function(col) {
+
+  col <- 'absolute_yard_number'
+  col_sym <- col %>% sym()
+  res <-
+    plays_w_pick_info_final %>%
+    count(pick_play_type, !!col_sym) %>%
+    pivot_wider(
+      names_from = pick_play_type,
+      values_from = n
+    ) %>%
+    mutate(
+      total = pick_play + other_play,
+      frac = pick_play / total
+    )
+  res
+  summ <-
+    prop.test(res$other_play, res$pick_play) %>%
+    broom::tidy()
+  ks.test(res$other_play, res$pick_play)
+  list('data' = res, 'results' = summ)
+}
+
 res_prop_test <-
-  plays_discrete_input_cols %>%
+  cols_d %>%
   tibble(col = .) %>%
-  mutate(data = map(col, compare_pick_plays_to_other_plays_discrete)) %>%
-  mutate(res = map(data, ~.x %>% drop_na() %>% prop.test(pick_play, other_play) %>% broom::tidy())) %>%
-  unnest(res)
+  mutate(data = map(col, compare_pick_plays_to_other_plays_discrete)) # %>%
+  # mutate(res = map(data, ~.x %>% drop_na() %>% prop.test(pick_play, other_play) %>% broom::tidy())) %>%
+  # unnest(res)
 
 # TODO: Need a data set describing how defenders played it and show these in visual examples.
 

@@ -79,10 +79,15 @@ features <-
 #   )
 # # columns added afterwards: event, success (0 or 1), success_rf_pred, dpoe (not used in model?)
 
+
 nms <- features %>% names()
 cols_ball <- nms %>% str_subset('^ball_')
 cols_qb <- nms %>% str_subset('^qb_')
-cols_rusher <- nms %>% str_subset('rusher')
+cols_od <- nms %>% str_subset('_[od]$|_[od]_')
+cols_od
+cols_od %>% setdiff(cols_qb)
+cols_qb %>% setdiff(cols_od)
+cols_rusher <- nms %>% str_subset('rusher') %>% str_subset('nfl_id', negate = TRUE)
 col_y <- 'idx_o_target'
 cols_id <-
   c(
@@ -91,55 +96,95 @@ cols_id <-
     'play_id',
     'frame_id'
   )
-cols_id
+cols_static_value <-
+  c(
+    'qb_o', 'los', 'dist_qb_ball', 'qb_x', 'qb_y'
+  )
 cols_static <-
   c(
     cols_id,
-    'sec',
-    'los',
-    'yards_to_go',
-    'idx_o_target',
-    'dist_qb_ball',
-    cols_ball,
-    cols_qb,
-    cols_rusher
+    'event',
+    # 'sec',
+    # 'yards_to_go',
+    cols_static_value
   )
-cols_static
+cols_pivot_name <- c('idx_o')
 
-features_n <- features %>% count(game_id, play_id, frame_id, event)
-features_n %>% count(n, name = 'nn') # Should always be 5
+cols_pivot_value <-
+  c(
+    'dist_qb', 'dist_ball', 'dist_d_robust', 'dist_ball_d_robust', 'dist_qb_d_robust', 'x', 'y'
+  )
+cols_keep <-
+  c(
+    col_y,
+    cols_static,
+    cols_pivot_name,
+    cols_pivot_value
+  )
+rgx_pivot_value <- sprintf('^(%s)_[1-5]$', paste(cols_pivot_value, collapse = '|', sep = ''))
+# features_n <- features %>% count(game_id, play_id, frame_id, event)
+# features_n %>% count(n, name = 'nn') # Should always be 5
 
-cols_shared_features <- c('qb_o', 'los', 'qb_x', 'qb_y')
-cols_individual_features <- c('dist_ball', 'dist_d1_naive', 'dist_ball_d1_naive', 'dist_qb_d1_naive', 'x', 'y')
-rgx_individual_features <- sprintf('^(%s)_[1-5]$', paste(cols_individual_features, collapse = '|', sep = ''))
-rgx_individual_features
+# cols_shared_features <- c('qb_o', 'los', 'qb_x', 'qb_y')
+# cols_individual_features <- c('dist_ball', 'dist_d1_naive', 'dist_ball_d1_naive', 'dist_qb_d1_naive', 'x', 'y')
+# rgx_individual_features <- sprintf('^(%s)_[1-5]$', paste(cols_individual_features, collapse = '|', sep = ''))
+# rgx_individual_features
+# features %>%
+#   filter(event == 'pass_forward') %>%
+#   filter(!is.na(nfl_id_target) & is.na(nfl_id_target_d_robust)) %>%
+#   count(week)
+
 features %>%
-  filter(event == 'pass_forward') %>%
-  filter(!is.na(nfl_id_target) & is.na(nfl_id_target_d_robust)) %>%
-  count(week)
+  # sample_n(20) %>%
+  head(20) %>%
+  left_join(routes) %>%
+  relocate(route) %>%
+  select(route, one_of(cols_keep)) %>%
+  mutate(
+    across(matches('^x_|_x'), ~los + .x),
+    across(one_of(cols_pivot_value), ~case_when(is.na(route) ~ 9999, TRUE ~ .x)),
+    across(idx_o_target, ~coalesce(.x, -1) %>% factor())
+  )
 
 features_wide <-
   features %>%
-  filter(event == 'pass_arrived') %>%
+  # head(100) %>%
+  filter(event %>% str_detect('sec$') | event == 'pass_forward') %>%
+  # count(game_id, play_id, frame_id, nfl_id) %>%
+  # distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE) %>%
+  group_by(game_id, play_id, frame_id, nfl_id) %>%
+  mutate(rn = row_number()) %>%
+  filter(rn == max(rn)) %>%
+  ungroup() %>%
+  select(-rn) %>%
+  left_join(routes) %>%
+  mutate(
+    across(matches('^x_|_x'), ~los + .x),
+    across(c(cols_pivot_value), ~case_when(is.na(route) ~ 9999, TRUE ~ .x)),
+    across(idx_o_target, ~coalesce(.x, -1) %>% factor())
+  ) %>%
+  select(one_of(cols_keep)) %>%
   pivot_wider(
-    names_from = 'idx_o',
-    values_from = setdiff(nms, cols_static)
+    names_from = all_of(cols_pivot_name),
+    # values_from = setdiff(nms, cols_keep)
+    values_from = all_of(cols_pivot_value)
     # values_from = cols_features
   ) %>%
-  mutate(across(idx_o_target, ~coalesce(.x, 101) %>% factor())) %>%
-  # drop_na() %>%
+  # filter(!is.na(idx_o_target)) %>%
   mutate(idx = row_number()) %>%
   relocate(idx)
 features_wide # %>% count(idx_o_target)
-features_wide %>% skimr::skim()
+# features_wide %>% skimr::skim()
 
+# features_wide %>% ggplot() + aes(x = x_rusher) + geom_histogram()
 features_wide_min <-
   features_wide %>%
   select(
     idx,
+    event,
     all_of(col_y),
-    one_of(cols_shared_features),
-    matches(rgx_individual_features)
+    one_of(cols_static_value),
+    matches(rgx_pivot_value)
   )
 features_wide_min
 
@@ -155,6 +200,9 @@ rec <-
   recipes::update_role(
     idx,
     new_role = 'extra'
+  ) %>%
+  recipes::step_dummy(
+    event
   )
 rec
 
@@ -177,10 +225,12 @@ rec
 
 spec <-
   parsnip::rand_forest(
-    trees = 1000
+    trees = 500,
+    min_n = 10,
+    mtry = trn %>% ncol() %>%  {. / 3} %>% floor()
   ) %>%
   parsnip::set_mode('classification') %>%
-  parsnip::set_engine('ranger')
+  parsnip::set_engine('ranger', importance = 'permutation')
 spec
 
 wf <-
@@ -192,15 +242,99 @@ wf <-
 # debugonce(workflows:::.fit_model)
 # debugonce(workflows:::fit_from_xy)
 fit <- parsnip::fit(wf, trn)
-probs <-
+write_rds(fit, file.path('inst', 'fit_rf.rds'))
+rebind_probs <- function(set, nm = deparse(substitute(set))) {
   bind_cols(
-    fit %>% predict(tst),
-    fit %>% predict(tst, type = 'prob')
+    fit %>% predict(set),
+    fit %>% predict(set, type = 'prob')
   ) %>%
-  bind_cols(tst)
-probs
+    mutate(.set = !!nm) %>%
+    relocate(.set) %>%
+    bind_cols(set)
+}
+
+probs <- bind_rows(trn %>% rebind_probs('trn'), tst %>% rebind_probs('tst'))
+probs %>% count(.set, .pred_class)
+
 probs %>%
-  yardstick::accuracy(idx_o_target, .pred_class)
+  # filter(.set == 'trn') %>%
+  # group_by(.set) %>%
+  nest(data = -c(.set, event)) %>%
+  mutate(res = map(data, ~yardstick::accuracy(.x, idx_o_target, .pred_class))) %>%
+  select(-data) %>%
+  unnest(res) %>%
+  arrange(.set, event)
+
+
+fit_wf <- fit %>% workflows::pull_workflow_fit()
+
+trn_jui <-
+  rec %>%
+  recipes::prep(training = trn) %>%
+  recipes::juice()
+x_trn_jui <-  trn_jui[, setdiff(names(trn_jui), col_y)] %>% as.matrix()
+y_trn_jui <- trn_jui[[col_y]] %>% as.integer() - 1L
+
+f_predict <- function(object, newdata) {
+  predict(object, data = newdata)$predictions
+}
+
+vip_wrapper <- function(method, ...) {
+  res <-
+    vip::vip(
+      method = method,
+      ...
+    ) %>%
+    pluck('data') %>%
+    # Will get a "Sign" solumn when using the default `method = 'model'`.
+    rename(var = Variable, imp = Importance)
+
+  if(any(names(res) == 'Sign')) {
+    res <-
+      res %>%
+      mutate(dir = ifelse(Sign == 'POS', +1L, -1L)) %>%
+      mutate(imp = dir * imp)
+  }
+  res
+}
+
+vip_wrapper_partial <-
+  partial(
+    vip_wrapper,
+    object = fit_wf$fit,
+    num_features = x_trn_jui %>% ncol(),
+    ... =
+  )
+
+metric <- 'sse'
+vip_wrapper_partial_permute <-
+  partial(
+    vip_wrapper_partial,
+    method = 'permute',
+    metric = metric,
+    pred_wrapper = f_predict,
+    ... =
+  )
+
+set.seed(42)
+vip_wrapper_partial_shap <-
+  partial(
+    vip_wrapper_partial,
+    method = 'shap',
+    train = x_trn_jui,
+    ... =
+  )
+
+
+vi_vip_model <- vip_wrapper_partial(method = 'model')
+vi_vip_permute <-
+  vip_wrapper_partial_permute(
+    train = x_trn_jui %>% as.data.frame(),
+    target = y_trn_jui
+  )
+vi_vip_shap <- vip_wrapper_partial_shap(pred_wrapper = f_predict)
+
+
 probs %>%
   # mutate(across(c(.pred_class), as.integer)) %>%
   yardstick::roc_aunp(truth = idx_o_target, matches('[.]pred_[1-5]'))
