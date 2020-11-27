@@ -136,7 +136,9 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
 
   snap_frames <- tracking %>% dplyr::filter(.data$event == 'ball_snap')
 
-  snap_frame_ids <- snap_frames %>% dplyr::distinct(.data$game_id, .data$play_id, .data$frame_id)
+  snap_frame_ids <-
+    snap_frames %>%
+    dplyr::distinct(.data$game_id, .data$play_id, .data$frame_id)
 
   frames_halfseconds <-
     snap_frame_ids %>%
@@ -152,7 +154,7 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
     # Technically this should be an integer, but we don't really need to coerce it.
     dplyr::mutate(
       frame_id = .data$frame_id + .data$sec * 10,
-      event = sprintf('%1.1f sec', sec)
+      event = sprintf('%1.1f sec', .data$sec)
     ) %>%
     dplyr::inner_join(
       tracking_clipped %>%
@@ -224,6 +226,8 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
 
     frames_first_idx_o <-
       frames_first %>%
+      # add_side_cols() %>%
+      # drop_ineligible_pick_route_frames() %>%
       dplyr::filter(.data$side == 'O') %>%
       dplyr::group_by(.data$game_id, .data$play_id) %>%
       dplyr::mutate(

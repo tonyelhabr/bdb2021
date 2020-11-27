@@ -51,24 +51,39 @@ do_identify_personnel_and_rushers <- function(week = 1L, at = 'end_rush', ...) {
     dplyr::summarize(n_d = dplyr::n()) %>%
     dplyr::ungroup()
 
+  end_frames %>%
+    dplyr::filter(.data$side == 'O' & .data$position != 'QB') %>%
+    dplyr::count(position)
+
+  pos_n <-
+    end_frames %>%
+    dplyr::left_join(
+      positions %>%
+        select(.data$side, .data$position, .data$position_category) %>%
+        mutate(across(.data$position_category, tolower))
+    ) %>%
+    dplyr::count(.data$game_id, .data$play_id, .data$position_category) %>%
+    tidyr::pivot_wider(
+      names_from = .data$position_category,
+      values_from = .data$n,
+      names_prefix = 'n_'
+    )
+
   off_agg <-
     end_frames %>%
     dplyr::filter(.data$side == 'O' & .data$position != 'QB') %>%
     dplyr::group_by(.data$game_id, .data$play_id) %>%
-    dplyr::summarize(n_o_nonqb = dplyr::n(), n_route = sum(!is.na(.data$route))) %>%
-    dplyr::ungroup() %>%
-    dplyr::left_join(
-      end_frames %>%
-        dplyr::filter(.data$position == 'QB') %>%
-        dplyr::group_by(.data$game_id, .data$play_id) %>%
-        dplyr::summarize(n_qb = dplyr::n()) %>%
-        dplyr::ungroup(),
-      by = c('game_id', 'play_id')
+    dplyr::summarize(
+      n_route = sum(!is.na(.data$route))
     ) %>%
-    dplyr::select(.data$game_id, .data$play_id, .data$n_qb, .data$n_o_nonqb, .data$n_route)
+    dplyr::ungroup()
 
   personnel_and_rushers <-
-    off_agg %>%
+    pos_n %>%
+    dplyr::left_join(
+      off_agg,
+      by = c('game_id', 'play_id')
+    ) %>%
     dplyr::left_join(
       def_agg,
       by = c('game_id', 'play_id')

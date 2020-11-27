@@ -4,9 +4,9 @@ identify_intersection_possibly <- purrr::possibly(identify_intersection, otherwi
 identify_intersections_until <- function(data, sec = 0.5) {
 
   .display_info('Identifying intersections up through {sec} seconds at {Sys.time()}.')
-  meta <- tibble::tibble(game_id = 2018090905L, play_id = 585L) # Week 1 example of an pick before 0.5 seconds
+  # meta <- tibble::tibble(game_id = 2018090905L, play_id = 585L) # Week 1 example of an pick before 0.5 seconds
   data <- receivers %>% inner_join(meta)
-  intersections_init %>% select(data) %>% unnest(data) -> data
+  # intersections_init %>% select(data) %>% unnest(data) -> data
   intersections_init <-
     data %>%
     # Need half-second frames before `sec`, so shouldn't filter those out.

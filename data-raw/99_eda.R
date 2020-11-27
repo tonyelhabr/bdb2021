@@ -2,7 +2,7 @@
 library(tidyverse)
 data('receiver_intersections_relaxed', package = 'bdb2021')
 data('personnel_and_rushers', package = 'bdb2021')
-data('players_from_tracking', package = 'bdb2021')
+data('jersey_numbers', package = 'bdb2021')
 data('routes', package = 'bdb2021')
 features <- file.path('inst', 'features.parquet') %>% arrow::read_parquet()
 
@@ -53,7 +53,7 @@ plays_w_pick_info
 plays_w_pick_info %>% filter(!is_pick_play)
 
 pick_play_meta_init %>%
-  count(week, game_id, play_id, nfl_id, nfl_id_intersect, is_lo, sec, target_is_intersect) %>%
+  count(game_id, play_id, nfl_id, nfl_id_intersect, is_lo, sec, target_is_intersect) %>%
   filter(n > 1L)
 
 # library(tidylog)
@@ -71,16 +71,16 @@ pick_plays <-
     by = c('game_id', 'play_id')
   ) %>%
   left_join(
-    players_from_tracking,
+    jersey_numbers,
     by = c( 'game_id', 'nfl_id')
   ) %>%
   left_join(
-    players_from_tracking %>%
+    jersey_numbers %>%
       rename_with(~sprintf('%s_intersect', .x), c(nfl_id, display_name, jersey_number, position)),
     by = c( 'game_id', 'nfl_id_intersect')
   ) %>%
   left_join(
-    players_from_tracking %>%
+    jersey_numbers %>%
       rename_with(~sprintf('%s_target', .x), c(nfl_id, display_name, jersey_number, position)),
     by = c( 'game_id', 'nfl_id_target')
   ) %>%
@@ -117,11 +117,11 @@ pick_plays
   }
 
 plays %>% names()
-cols_d <- c('quarter', 'down', 'defenders_in_the_box', 'number_of_pass_rushers',  'type_dropback', 'is_defensive_pi') # 'personnel_o', 'personnel_d', 'n_rb', 'n_wr', 'n_te', 'n_dl', 'n_lb', 'n_db') # 'possession_team',
+cols_d <- c('quarter', 'down', 'defenders_in_the_box', 'number_of_pass_rushers',  'type_dropback', 'is_defensive_pi', 'n_rb', 'n_wr', 'n_te', 'n_dl', 'n_lb', 'n_db') # 'personnel_o', 'personnel_d',  'possession_team',
 cols_c_i_added_nflfastr <- 'wp'
 cols_c_i_added <- c(cols_c_i_added_nflfastr, 'pre_snap_score_diff')
 cols_c_i <- c(cols_c_i_added, 'yards_to_go', 'absolute_yardline_number', 'pre_snap_home_score') # , 'pre_snap_visitor_score')
-
+cols_features <- c(cols_d, cols_c_i)
 # cols_c_o <- c('epa', 'wpa')
 # cols_unused <- c('game_id', 'play_id', 'play_description')
 
@@ -135,14 +135,41 @@ plays_w_pick_info_final <-
     pre_snap_score_diff = pre_snap_home_score - pre_snap_visitor_score
   ) %>%
   left_join(
-    pbp %>% select(game_id, play_id, cols_c_i_added_nflfastr)
+    pbp %>%
+      group_by(game_id) %>%
+      arrange(game_seconds_remaining, .by_group = TRUE) %>%
+      fill(wp) %>%
+      ungroup() %>%
+      select(game_id, play_id, wp)
   ) %>%
   mutate(
     across(one_of(cols_d), factor)
   )
 plays_w_pick_info_final %>% filter(is.na(wp))
+
+n_pos_n <-
+  plays_w_pick_info_final %>%
+  select(n_rb, n_wr, n_te, n_dl, n_lb, n_db) %>%
+  mutate(idx = row_number()) %>%
+  pivot_longer(-idx, names_to = 'pos') %>%
+  count(pos, value) %>%
+  group_by(pos) %>%
+  mutate(frac = n / sum(n)) %>%
+  ungroup()
+
+recipes::step_lump
+
+n_pos_n %>%
+  filter(frac < 0.01)
+n_pos_n %>% filter(is.na(value))
+plays %>% filter(is.na(n_db)) %>% relocate(personnel_o, personnel_d) %>% select(play_description)
+plays %>%
+  # filter(n_db_o != n_db)
+  filter(n_dl != n_dl_o) %>%
+  filter(!is.na(n_dl))
+jersey_numbers
 glm_bi <- partial(glm, data = plays_w_pick_info_final, family = 'binomial', ... = )
-fmla_x <- .paste_fmla_vars(c(cols_d, cols_c_i, cols_c_i_added)) # c(cols_d, cols_c_i, cols_c_i_added))
+fmla_x <- cols_features %>% .paste_fmla_vars() # c(cols_d, cols_c_i, cols_c_i_added))
 fit_glm <-
   paste0('is_pick_play ~ ', fmla_x) %>%
   glm_bi()
