@@ -229,8 +229,10 @@ pbp_data <- pbp_data %>%
   )
 
 plays <- import_plays()
-# plays %>%
-#   filter(!(n_k > 0L | n_p > 0L))
+
+# Take out some weird plays... probably should do more than this
+plays %>% filter(is.na(personnel_o))
+plays %>% skimr::skim()
 plays_filt <-
   plays %>%
   anti_join(
@@ -246,11 +248,12 @@ pbp <- import_nflfastr_pbp()
 pbp
 
 #' @seealso \url{https://github.com/mrcaseb/nflfastR/blob/master/data-raw/MODELS.R#L25}
-nflfastr_epa_model_features <-
+epa_model_data <-
   pbp_data %>%
   nflfastR:::make_model_mutations() %>%
   left_join(
     pick_play_ids_adj %>%
+      filter(sec <= 2) %>%
       select(week, game_id, play_id) %>%
       mutate(is_pick_play = 1L),
     by = c('game_id', 'play_id', 'week')
@@ -310,17 +313,20 @@ nflfastr_epa_model_features <-
     dome,
     outdoors,
     ydstogo,
-    era0,
-    era1,
-    era2,
-    era3,
-    era4,
+    # era0,
+    # era1,
+    # era2,
+    # era3,
+    # era4,
     down1,
     down2,
     down3,
     down4,
     posteam_timeouts_remaining,
     defteam_timeouts_remaining,
+    Drive_Score_Dist, # added just for info purposes
+    Drive_Score_Dist_W, # added
+    ScoreDiff_W, # added
     Total_W_Scaled
   ) %>%
   # There are some duplicates for some reason... Seems to be due to the nflfastR data.
@@ -328,34 +334,32 @@ nflfastr_epa_model_features <-
   filter(row_number() == 1L) %>%
   ungroup()
 
-# usethis::use_data(nflfastr_epa_model_features, overwrite = TRUE)
-nflfastr_epa_model_features
-# nflfastr_epa_model_features %>% count(game_id, play_id) %>% filter(n > 1L) %>% head(1) %>% inner_join(nflfastr_epa_model_features) %>% glimpse()
+epa_model_data %>%
+  select(matches('_(W|Dist)')) %>%
+  mutate(idx = row_number()) %>%
+  # relocate(idx) %>%
+  pivot_longer(
+    -idx
+  ) %>%
+  ggplot() +
+  aes(x = value) +
+  geom_histogram() +
+  facet_wrap(~name, scales = 'free')
 
-xgb_wt_col <- 'Total_W_Scaled'
-y_col <- 'label'
-y_col_propensity <- 'is_pick_play'
-extra_cols <- c('game_id', 'play_id', 'epa')
-extra_cols_propensity <- c('game_id', 'play_id', 'epa', 'label')
-nonfit_cols <- c(y_col, extra_cols, xgb_wt_col)
-nonfit_cols_propensity <- c(y_col_propensity, extra_cols_propensity, xgb_wt_col)
+epa_model_data %>%
+  relocate(matches('_W|_Dist')) %>%
+  arrange(-Total_W_Scaled)
+# usethis::use_data(epa_model_data, overwrite = TRUE)
+epa_model_data
+# epa_model_data %>% count(game_id, play_id) %>% filter(n > 1L) %>% head(1) %>% inner_join(epa_model_data) %>% glimpse()
 
-# epa params
-nrounds <- 525
-params <-
-  list(
-    booster = 'gbtree',
-    objective = 'multi:softprob',
-    eval_metric = c('mlogloss'),
-    num_class = 7,
-    eta = 0.025,
-    gamma = 1,
-    subsample = 0.8,
-    colsample_bytree = 0.8,
-    max_depth = 5,
-    min_child_weight = 1,
-    base_score = mean(nflfastr_epa_model_features[[y_col]])
-  )
+col_wt <- 'Total_W_Scaled'
+col_y <- 'label'
+col_y_propensity <- 'is_pick_play'
+cols_extra <- c('game_id', 'play_id', 'epa')
+cols_extra_propensity <- c(cols_extra, 'label')
+cols_nonx <- c(col_y, cols_extra, col_wt)
+cols_nonx_propensity <- c(col_y_propensity, cols_extra_propensity, col_wt)
 
 nrounds_propensity <- 525
 params_propensity <-
@@ -370,56 +374,34 @@ params_propensity <-
     colsample_bytree = 0.8,
     max_depth = 5,
     min_child_weight = 1,
-    base_score = mean(nflfastr_epa_model_features[[y_col_propensity]])
+    base_score = mean(epa_model_data[[col_y_propensity]])
   )
 
-# cp params
-# nrounds <- 560
-# params <-
-#   list(
-#     booster = 'gbtree',
-#     objective = 'binary:logistic',
-#     eval_metric = c('logloss'),
-#     eta = 0.025,
-#     gamma = 5,
-#     subsample = 0.8,
-#     colsample_bytree = 0.8,
-#     max_depth = 4,
-#     min_child_weight = 6,
-#     base_score = mean(nflfastr_epa_model_features$label)
-#   )
-
-# nflfastr_epa_model_features <-
-#   nflfastr_epa_model_features %>%
-#   mutate(
-#     label = as.numeric(label),
-#     label = label - 1
-#   )
 
 full_train <-
   model.matrix(
     ~ . + 0,
     data =
-      nflfastr_epa_model_features %>%
-      # select(-.data[[y_col_propensity]], -.data[[xgb_wt_col]])
-      select(-one_of(nonfit_cols))
+      epa_model_data %>%
+      # select(-.data[[col_y_propensity]], -.data[[col_wt]])
+      select(-one_of(cols_nonx))
   ) %>%
   xgboost::xgb.DMatrix(
-    label = nflfastr_epa_model_features[[y_col]],
-    weight = nflfastr_epa_model_features[[xgb_wt_col]]
+    label = epa_model_data[[col_y]],
+    weight = epa_model_data[[col_wt]]
   )
 
 full_train_propensity <-
   model.matrix(
     ~ . + 0,
     data =
-      nflfastr_epa_model_features %>%
-      # select(-.data[[y_col_propensity]], -.data[[xgb_wt_col]])
-      select(-one_of(nonfit_cols_propensity))
+      epa_model_data %>%
+      # select(-.data[[col_y_propensity]], -.data[[col_wt]])
+      select(-one_of(cols_nonx_propensity))
   ) %>%
   xgboost::xgb.DMatrix(
-    label = nflfastr_epa_model_features[[y_col_propensity]],
-    weight = nflfastr_epa_model_features[[xgb_wt_col]]
+    label = epa_model_data[[col_y_propensity]],
+    weight = epa_model_data[[col_wt]]
   )
 
 fit <-
@@ -541,19 +523,19 @@ shaps
 #   relocate(.fitted, wts) %>%
 #   arrange(-.fitted)
 
-nflfastr_epa_model_features_w_propensity <-
+epa_model_data_w_propensity <-
   propensity_fit %>%
   stats::predict(full_train, type = 'response') %>%
   tibble(.fitted = .) %>%
-  bind_cols(nflfastr_epa_model_features) %>%
+  bind_cols(epa_model_data) %>%
   # broom::tidy()
   # broom::augment(type.predict = 'response', data = full_train) %>%
   # Compute inverse probability weights
-  mutate(wts = 1 / ifelse(.data[[y_col_propensity]] == 0, 1 - .fitted, .fitted)) %>%
+  mutate(wts = 1 / ifelse(.data[[col_y_propensity]] == 0, 1 - .fitted, .fitted)) %>%
   relocate(wts)
-nflfastr_epa_model_features_w_propensity
+epa_model_data_w_propensity
 
-nflfastr_epa_model_features_w_propensity %>%
+epa_model_data_w_propensity %>%
   ggplot() +
   aes(x = wts) %>%
   geom_density(size = .8) +
@@ -564,22 +546,22 @@ nflfastr_epa_model_features_w_propensity %>%
 svy_des <-
   survey::svydesign(
     ids = ~ 1,
-    data = nflfastr_epa_model_features_w_propensity,
+    data = epa_model_data_w_propensity,
     weights = ~ wts
   )
 
-propensity_col_propensitys <- c('.fitted', 'wts')
+propensitcol_y_propensitys <- c('.fitted', 'wts')
 feature_cols <-
-  nflfastr_epa_model_features_w_propensity %>%
+  epa_model_data_w_propensity %>%
   names() %>%
-  setdiff(c(nonfit_cols_propensity, propensity_col_propensitys))
+  setdiff(c(cols_nonx_propensity, propensitcol_y_propensitys))
 feature_cols
 
 smd_table_unweighted <-
   tableone::CreateTableOne(
     vars = feature_cols,
-    strata = y_col_propensity,
-    data = nflfastr_epa_model_features_w_propensity,
+    strata = col_y_propensity,
+    data = epa_model_data_w_propensity,
     test = FALSE
   )
 smd_table_unweighted
@@ -587,7 +569,7 @@ smd_table_unweighted
 smd_table <-
   tableone::svyCreateTableOne(
     vars = feature_cols,
-    strata = y_col_propensity,
+    strata = col_y_propensity,
     data = svy_des,
     test = FALSE
   )
@@ -617,7 +599,7 @@ ggplot(
 # mgcv::bam
 ipw_fit <- lm(
   formula(epa ~ label),
-  data = nflfastr_epa_model_features_w_propensity,
+  data = epa_model_data_w_propensity,
   weights = wts
 )
 ipw_fit
@@ -625,5 +607,5 @@ ipw_fit
 ipw_estimate <-
   ipw_fit %>%
   broom::tidy(conf.int = TRUE) %>%
-  filter(term == !!y_col_propensity)
+  filter(term == !!col_y_propensity)
 ipw_estimate

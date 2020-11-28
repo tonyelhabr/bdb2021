@@ -8,7 +8,7 @@
 + show high epa pick play
 + describe methodology
   + intersections (with a backward buffer). why not just general crossing (checking for re-ordering of receivers relative to a fixed y-place (e.g. sideline)
-  + how many seconds into the play (2.5 sec?)
+  + how many seconds into the play (2 sec?)
 
 
 # how impactful are they?

@@ -40,21 +40,25 @@ plays_w_pick_info <-
   left_join(
     personnel_and_rushers %>%
       select(-rushers) %>%
-      rename(n_qb_rusher = n_qb),
+      rename_with(~sprintf('%s_personnel', .x), matches('^n_')) %>%
+      rename(n_rusher = n_rusher_personnel),
     by = c('game_id', 'play_id')
   ) %>%
   mutate(
     is_pick_play = map_lgl(pick_data, ~!is.null(.x)),
     across(n_rusher, ~coalesce(.x, 0L)),
     # pick_data = map_if(pick_data, is.null, ~tibble())
+    # Seems that there were 29 plays with NAs for each of these, so fill them in with other data
+    # since we'll use them for our proportional model later.
+    across(n_wr, ~coalesce(.x, n_wr_personnel)),
+    across(n_rb, ~coalesce(.x, n_rb_personnel)),
+    across(n_wr, ~coalesce(.x, n_te_personnel)),
+    across(n_dl, ~coalesce(.x, n_dl_personnel)),
+    across(n_lb, ~coalesce(.x, n_lb_personnel)),
+    across(n_db, ~coalesce(.x, n_db_personnel))
   ) %>%
   relocate(game_id, play_id, is_pick_play, pick_data)
 plays_w_pick_info
-plays_w_pick_info %>% filter(!is_pick_play)
-
-pick_play_meta_init %>%
-  count(game_id, play_id, nfl_id, nfl_id_intersect, is_lo, sec, target_is_intersect) %>%
-  filter(n > 1L)
 
 # library(tidylog)
 pick_plays <-
@@ -116,14 +120,6 @@ pick_plays
     paste0(backtick, paste(x, collapse = collapse, sep = sep), backtick)
   }
 
-plays %>% names()
-cols_d <- c('quarter', 'down', 'defenders_in_the_box', 'number_of_pass_rushers',  'type_dropback', 'is_defensive_pi', 'n_rb', 'n_wr', 'n_te', 'n_dl', 'n_lb', 'n_db') # 'personnel_o', 'personnel_d',  'possession_team',
-cols_c_i_added_nflfastr <- 'wp'
-cols_c_i_added <- c(cols_c_i_added_nflfastr, 'pre_snap_score_diff')
-cols_c_i <- c(cols_c_i_added, 'yards_to_go', 'absolute_yardline_number', 'pre_snap_home_score') # , 'pre_snap_visitor_score')
-cols_features <- c(cols_d, cols_c_i)
-# cols_c_o <- c('epa', 'wpa')
-# cols_unused <- c('game_id', 'play_id', 'play_description')
 
 plays_w_pick_info_final <-
   plays_w_pick_info %>%
@@ -143,9 +139,11 @@ plays_w_pick_info_final <-
       select(game_id, play_id, wp)
   ) %>%
   mutate(
-    across(one_of(cols_d), factor)
+    across(c(quarter, down), factor)
   )
-plays_w_pick_info_final %>% filter(is.na(wp))
+
+plays_w_pick_info_final %>% filter(is.na(number_of_pass_rushers))
+plays_w_pick_info_final %>% filter(is.na(type_dropback))
 
 n_pos_n <-
   plays_w_pick_info_final %>%
@@ -156,57 +154,147 @@ n_pos_n <-
   group_by(pos) %>%
   mutate(frac = n / sum(n)) %>%
   ungroup()
+n_pos_n %>% filter(frac > 0.1)
 
-recipes::step_lump
+plays_w_pick_info_final %>%
+  # filter(is_4 = quarter == '4') %>%
+  count(is_4 = quarter == '4', is_pick_play) %>%
+  group_by(is_4) %>%
+  mutate(frac = n / sum(n)) %>%
+  ungroup()
 
-n_pos_n %>%
-  filter(frac < 0.01)
-n_pos_n %>% filter(is.na(value))
-plays %>% filter(is.na(n_db)) %>% relocate(personnel_o, personnel_d) %>% select(play_description)
-plays %>%
-  # filter(n_db_o != n_db)
-  filter(n_dl != n_dl_o) %>%
-  filter(!is.na(n_dl))
-jersey_numbers
-glm_bi <- partial(glm, data = plays_w_pick_info_final, family = 'binomial', ... = )
-fmla_x <- cols_features %>% .paste_fmla_vars() # c(cols_d, cols_c_i, cols_c_i_added))
-fit_glm <-
-  paste0('is_pick_play ~ ', fmla_x) %>%
-  glm_bi()
+plays %>% names()
+cols_d <- c('quarter', 'down', 'n_rb', 'n_wr', 'n_te') # 'defenders_in_the_box', 'number_of_pass_rushers', 'type_dropback', 'n_dl', 'n_lb', 'n_db', 'is_defensive_pi', 'personnel_o', 'personnel_d',  'possession_team',
+cols_c_i_added_nflfastr <- 'wp'
+cols_c_i_added <- c(cols_c_i_added_nflfastr, 'pre_snap_score_diff')
+cols_c_i <- c(cols_c_i_added, 'yards_to_go', 'absolute_yardline_number', 'pre_snap_home_score') # , 'pre_snap_visitor_score')
+cols_features <- c(cols_d, cols_c_i)
+# cols_c_o <- c('epa', 'wpa')
+# cols_unused <- c('game_id', 'play_id', 'play_description')
 
-coefs <- fit_glm %>% broom::tidy()
-coefs %>% filter(p.value < 0.05)
+col_y <- 'is_pick_play'
+fmla <- cols_features %>% .paste_fmla_vars() %>% paste0(col_y, ' ~ ', .) %>% as.formula() # c(cols_d, cols_c_i, cols_c_i_added))
+fmla
 
+rec <-
+  plays_w_pick_info_final %>%
+  recipes::recipe(fmla, data = .) %>%
+  # recipes::step_dummy(quarter, down) %>%
+  recipes::step_other(
+    matches('^n_'),
+    # defenders_in_the_box,
+    threshold = 0.05,
+    other = '_other'
+  ) # %>%
+  # recipes::step_other(type_dropback, threshold = 0.02, other = '_other') # %>%
+  # recipes::step_dummy(recipes::all_nominal(), one_hot = TRUE)
+rec
 
-compare_pick_plays_to_other_plays_discrete <- function(col) {
+pre <- rec %>% recipes::prep()
+jui <- pre %>% recipes::juice()
+# jui %>% count(n_rb) %>% mutate(frac = n / sum(n))
+require(ggforce) # Need to explicitly load for `position = 'auto'` to work in `geom_point()`
+set.seed(42)
+viz_features <-
+  plays_w_pick_info_final %>%
+  select(all_of(c(col_y, cols_features))) %>%
+  mutate(
+    across(any_of(cols_d), factor)
+  ) %>%
+  drop_na() %>%
+  sample_frac(0.1, weight = is_pick_play) %>%
+  ggplot(aes(x = .panel_x, y = .panel_y, fill = is_pick_play, colour = is_pick_play)) +
+  geom_point(shape = 16, size = 0.5, position = 'auto') +
+  ggforce::geom_autodensity(alpha = 0.3, colour = NA, position = 'identity') +
+  # geom_smooth(aes(colour = NULL, fill = NULL)) +
+  ggforce::facet_matrix(
+    vars(any_of(cols_features)),
+    layer.diag = 2
+  )
+viz_features
+ggsave(plot = viz_features, filename = file.path('inst', 'viz_features_prop_scores.png'), width = 10, height = 10, type = 'cairo')
 
-  col <- 'absolute_yard_number'
-  col_sym <- col %>% sym()
-  res <-
-    plays_w_pick_info_final %>%
-    count(pick_play_type, !!col_sym) %>%
-    pivot_wider(
-      names_from = pick_play_type,
-      values_from = n
-    ) %>%
-    mutate(
-      total = pick_play + other_play,
-      frac = pick_play / total
-    )
-  res
-  summ <-
-    prop.test(res$other_play, res$pick_play) %>%
-    broom::tidy()
-  ks.test(res$other_play, res$pick_play)
-  list('data' = res, 'results' = summ)
-}
+# # jui %>% visdat::vis_miss()
 
-res_prop_test <-
-  cols_d %>%
-  tibble(col = .) %>%
-  mutate(data = map(col, compare_pick_plays_to_other_plays_discrete)) # %>%
-  # mutate(res = map(data, ~.x %>% drop_na() %>% prop.test(pick_play, other_play) %>% broom::tidy())) %>%
-  # unnest(res)
+# rec <-
+#   plays_w_pick_info_final %>%
+#   # recipes::recipe(fmla, data = .) %>%
+#   recipes::recipe(formula(is_pick_play ~ number_of_pass_rushers), data = .) %>%
+#   recipes::step_other(number_of_pass_rushers, threshold = 0.1)
+
+spec <-
+  parsnip::logistic_reg(
+
+  ) %>%
+  parsnip::set_mode('classification') %>%
+  parsnip::set_engine('glm')
+
+wf <-
+  workflows::workflow() %>%
+  workflows::add_recipe(rec) %>%
+  workflows::add_model(spec)
+wf
+
+fit <- parsnip::fit(wf, plays_w_pick_info_final)
+fit
+
+coefs <-
+  fit %>%
+  broom::tidy() %>%
+  mutate(
+    across(term, ~fct_reorder(.x, estimate)),
+    lo = estimate - 1.96 * std.error,
+    hi = estimate + 1.96 * std.error,
+    is_signif = if_else(p.value < 0.05, TRUE, FALSE)
+  )
+
+viz_coefs <-
+  coefs %>%
+  ggplot() +
+  aes(y = term, x = estimate, color = is_signif) +
+  geom_point(size = 2) +
+  geom_errorbarh(aes(xmin = lo, xmax = hi), size = 1) +
+  scale_color_manual(values = c(`TRUE` = 'red', `FALSE` = 'black')) +
+  geom_vline(data = tibble(), aes(xintercept = 0), linetype = 2) +
+  guides(color = FALSE) +
+  theme_classic() +
+  labs(
+    title = 'Proportional Matching Model',
+    y = NULL, x = 'Estimate'
+  )
+viz_coefs
+
+# compare_pick_plays_to_other_plays_discrete <- function(col) {
+#
+#   col <- 'n_rb'
+#   col_sym <- col %>% sym()
+#   res <-
+#     plays_w_pick_info_final %>%
+#     count(pick_play_type, !!col_sym) %>%
+#     pivot_wider(
+#       names_from = pick_play_type,
+#       values_from = n
+#     ) %>%
+#     mutate(
+#       total = pick_play + other_play,
+#       frac = pick_play / total
+#     )
+#   res
+#   summ <-
+#     prop.test(res$other_play, res$pick_play) %>%
+#     broom::tidy()
+#   summ
+#
+#   ks.test(res$other_play, res$pick_play)
+#   list('data' = res, 'results' = summ)
+# }
+#
+# res_prop_test <-
+#   cols_d %>%
+#   tibble(col = .) %>%
+#   mutate(data = map(col, compare_pick_plays_to_other_plays_discrete)) # %>%
+#   # mutate(res = map(data, ~.x %>% drop_na() %>% prop.test(pick_play, other_play) %>% broom::tidy())) %>%
+#   # unnest(res)
 
 # TODO: Need a data set describing how defenders played it and show these in visual examples.
 
@@ -267,23 +355,23 @@ pick_play_agg
 # Not sure why I have stuff beyond 3.5 seconds into the play. I thought I explicitly cut that out (with `n_halfseconds`)?
 features_min <-
   features %>%
-  filter(event %>% str_detect('sec$') & sec <= 2) %>%
-  select(week, game_id, play_id, frame_id, sec, nfl_id, nfl_id_d, dist_d)
+  filter(event %>% str_detect('sec$') & sec <= .sec_cutoff) %>%
+  select(week, game_id, play_id, frame_id, sec, nfl_id, nfl_id_d_robust, dist_d_robust)
 features_min
 
 # For "expanding" plays less than `sec_cutoff` seconds.
 id_grid <-
   features_min %>%
   distinct(week, game_id, play_id, nfl_id) %>%
-  crossing(sec = seq(0, 2, by = 0.5))
+  crossing(sec = seq(0, .sec_cutoff, by = 0.5))
 id_grid
 
 features_lag_init <-
   features_min %>%
   group_by(game_id, play_id, nfl_id) %>%
   mutate(
-    has_same_prev_defender = if_else(nfl_id_d == dplyr::lag(nfl_id_d), TRUE, FALSE),
-    has_same_init_defender = if_else(nfl_id_d == dplyr::first(nfl_id_d), TRUE, FALSE)
+    has_same_prev_defender = if_else(nfl_id_d_robust == dplyr::lag(nfl_id_d_robust), TRUE, FALSE),
+    has_same_init_defender = if_else(nfl_id_d_robust == dplyr::first(nfl_id_d_robust), TRUE, FALSE)
   ) %>%
   ungroup() %>%
   mutate(across(has_same_init_defender, ~if_else(sec == 0, NA, .x))) %>%
@@ -301,7 +389,7 @@ features_lag_init
 features_lag_n_def <-
   features_lag_init %>%
   group_by(week, game_id, play_id, nfl_id) %>%
-  summarize(n_def = n_distinct(nfl_id_d)) %>%
+  summarize(n_def = n_distinct(nfl_id_d_robust)) %>%
   ungroup()
 features_lag_n_def %>% count(n_def)
 features_lag_n_def %>% count(n_def)
@@ -434,9 +522,9 @@ res_lag <-
   res %>%
   group_by(nfl_id) %>%
   mutate(
-    across(nfl_id_d, list(prev = ~dplyr::lag(.x))),
-    # nfl_id_d_prev = nfl_id_d %>% dplyr::lag(),
-    has_same_defender = if_else(nfl_id_d == nfl_id_d_prev, TRUE, FALSE)
+    across(nfl_id_d_robust, list(prev = ~dplyr::lag(.x))),
+    # nfl_id_d_robust_prev = nfl_id_d_robust %>% dplyr::lag(),
+    has_same_defender = if_else(nfl_id_d_robust == nfl_id_d_robust_prev, TRUE, FALSE)
   ) %>%
   ungroup()
 res
