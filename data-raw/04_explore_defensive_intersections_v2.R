@@ -1,4 +1,5 @@
 
+
 # TODO: Need to combine this with the prior script...
 library(tidyverse)
 data('pick_plays', package = 'bdb2021')
@@ -10,28 +11,28 @@ pbp <- import_nflfastr_pbp()
 .sec_cutoff <- 2
 
 # Only want the seconds frames, not the other event frames.
-# TODO: A
+events_end_rush <- .get_events_end_rush()
 features_min <-
   features %>%
-  filter(event %>% str_detect('sec$')) %>%
-  filter(sec <= .sec_cutoff) %>%
-  # Not using `dist*` at this point.
-  select(week, game_id, play_id, frame_id, sec, nfl_id, nfl_id_d_robust) # , dist_o, dist_d_robust, dist_ball, dist_ball_d_robust)
+  filter(event %in% c('0.0 sec', events_end_rush)) %>%
+  select(week, game_id, play_id, event, frame_id, sec, nfl_id, nfl_id_d_robust) %>%
+  # If there are multiple of these `events_end_rush` on the same play, then just pick the first
+  group_by(game_id, play_id, nfl_id, event) %>%
+  # filter(frame_id == min(frame_id)) %>%
+  filter(row_number() == 1L) %>%
+  ungroup()
 features_min
 
-# # For "expanding" plays less than `sec_cutoff` seconds.
-# id_grid <-
-#   features_min %>%
-#   distinct(week, game_id, play_id, nfl_id) %>%
-#   crossing(sec = seq(0, .sec_cutoff, by = 0.5))
-# id_grid
+features_min %>%
+  count(game_id, play_id, nfl_id, event) %>%
+  count(n, name = 'nn')
+
 
 # Adding the `_defender` and `_intersect` columns. Need to join on itself in order to get `had_intersect`, hence the `_init` added to the variable name.
 features_lag_init <-
   features_min %>%
   group_by(game_id, play_id, nfl_id) %>%
   mutate(
-    has_same_prev_defender = if_else(nfl_id_d_robust == dplyr::lag(nfl_id_d_robust), TRUE, FALSE),
     has_same_init_defender = if_else(nfl_id_d_robust == dplyr::first(nfl_id_d_robust), TRUE, FALSE)
   ) %>%
   ungroup() %>%
@@ -46,7 +47,7 @@ features_lag_init <-
     across(has_intersect, ~if_else(sec == 0, NA, .x))
   )
 features_lag_init
-
+features_lag_init %>% filter(sec != 0)
 # # Not using this, although it would be interesting for quantifying double teams
 # features_lag_n_def <-
 #   features_lag_init %>%
@@ -115,57 +116,3 @@ features_w_pick_info_agg <-
   ungroup()
 features_w_pick_info_agg # %>% left_join(plays_w_pick_info)
 usethis::use_data(features_w_pick_info_agg, overwrite = TRUE)
-
-fmla <- formula(epa ~ factor(sec) + has_same_init_defender)
-fit <- lm(fmla, data = features_lag %>% filter(sec > 0) %>% filter(is_lo))
-fit
-
-fit <- lm(fmla, data = features_lag %>% filter(sec > 0) %>% filter(is.na(is_lo)))
-fit %>% broom::tidy()
-
-features_lag %>%
-  filter(sec %>% str_detect('pass_throw'))
-
-features_lag %>% filter(had_intersect)
-
-features_lag %>%
-  filter(has_same_prev_defender != has_same_init_defender)
-features_lag %>%
-  filter(has_intersect != had_intersect)
-features_lag
-
-# Checking frequencies
-features_lag_n <-
-  features_lag %>%
-  filter(sec > 0) %>%
-  count(sec, is_lo, has_same_prev_defender, has_same_init_defender, has_intersect, had_intersect)
-features_lag_n
-features_lag_n %>% filter(is_lo, sec == 2)
-
-features_lag_n_long <-
-  features_lag_n %>%
-  rename(prev = has_same_prev_defender, init = has_same_init_defender) %>%
-  pivot_longer(
-    c(prev, init),
-    names_to = 'defender_cnd',
-    values_to = 'defender_lgl'
-  ) %>%
-  rename(current = has_intersect, past = had_intersect) %>%
-  pivot_longer(
-    c(current, past),
-    names_to = 'intersect_cnd',
-    values_to = 'intersect_lgl'
-  )
-features_lag_n_long
-
-features_lag_n %>%
-  filter(is_lo != FALSE) %>%
-  # filter(intersect_cnd == 'past', defender_cnd == 'init') %>%
-  mutate(grp = sprintf('%s pick? %s. Is %s frames\' defender? %s.', ifelse(intersect_cnd == 'past', 'Had', 'Is'), ifelse(intersect_lgl, 'Y', 'N'), ifelse(defender_cnd == 'init', 'initial', 'previous'), ifelse(defender_lgl, 'Y', 'N'))) %>%
-  # group_by(sec) %>%
-  # summarize(across(frac, sum))
-  ggplot() +
-  aes(x = sec, y = n) +
-  geom_col(aes(fill = defender_lgl), position = 'dodge') +
-  facet_grid(defender_cnd~intersect_cnd, scales = 'fixed') +
-  theme_minimal()

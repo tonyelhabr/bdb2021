@@ -58,7 +58,12 @@ plays_w_pick_info <-
     # across(n_lb, ~coalesce(.x, n_lb_personnel)),
     # across(n_db, ~coalesce(.x, n_db_personnel))
   ) %>%
-  relocate(game_id, play_id, is_pick_play, pick_data)
+  relocate(game_id, play_id, is_pick_play, pick_data) %>%
+  left_join(
+    pbp %>%
+      select(game_id, play_id, wp_nflfastr = wp, wpa_nflfastr = wpa, epa_nflfastr = epa),
+    by = c('game_id', 'play_id')
+  )
 plays_w_pick_info
 
 # library(tidylog)
@@ -175,8 +180,8 @@ rec <-
   # recipes::step_dummy(recipes::all_nominal(), one_hot = TRUE)
 rec
 
-pre <- rec %>% recipes::prep()
-jui <- pre %>% recipes::juice()
+# pre <- rec %>% recipes::prep()
+# jui <- pre %>% recipes::juice()
 # jui %>% count(n_rb) %>% mutate(frac = n / sum(n))
 
 require(ggforce) # Need to explicitly load for `position = 'auto'` to work in `geom_point()`

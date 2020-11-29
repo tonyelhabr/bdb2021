@@ -93,7 +93,7 @@ cols_pivot_name <- 'idx_o'
 # nw: , 'x', 'y', 'dist_ball', 'dist_d_robust', 'dist_ball_d_robust', 'dist_qb', 'dist_qb_d_robust'
 cols_pivot_value <-
   c(
-    'x', 'y', 'dist_ball', 'dist_d_robust', 'dist_ball_d_robust', 'dist_d1_naive' # , 's', 's_d_robust', 'o', 'o_d_robust' # , 'a', 'a_d_robust', 'o', 'o_d_robust'
+    'x', 'y', 'dist_ball', 'dist_d_robust', 'dist_ball_d_robust', 'dist_d1_naive', 'o', 'o_d_robust' # , 's', 's_d_robust' # , 'a', 'a_d_robust', 'o', 'o_d_robust'
   )
 cols_keep <-
   c(
@@ -149,12 +149,13 @@ features_wide_min <-
 features_wide_min
 rm('features_wide')
 
+fmla <- paste0(col_y, ' ~ .') %>% as.formula()
+
 set.seed(42)
 splits <- features_wide_min %>% rsample::initial_split(strata = !!col_y)
 trn <- splits %>% rsample::training()
 tst <- splits %>% rsample::testing()
 
-fmla <- paste0(col_y, ' ~ .') %>% as.formula()
 
 rec <-
   recipes::recipe(fmla, data = trn) %>%
@@ -197,7 +198,7 @@ do_rf <- function(min_n = 2, mtry = 42, trees = 500, suffix = 'w_s_o', overwrite
   .display_info('Fitting rf for `min_n = {min_n}`, `mtry = {mtry}`, `trees = {trees}` at {Sys.time()}.')
 
   path_suffix <- sprintf('%s-min_n=%d-mtry=%d-trees=%d', suffix, min_n, mtry, trees)
-  .path <- function(prefix, ext = 'rds') {
+  .path <- function(prefix, ext) {
     file.path('inst', sprintf('%s-%s.%s', prefix, path_suffix, ext))
   }
 
@@ -281,11 +282,89 @@ do_rf_timed <- .time_it(do_rf)
 grid_params_rf
 res_grid_rf <-
   grid_params_rf %>%
+  slice(2) %>%
   mutate(
     acc =
       map2(
         min_n, mtry,
-        ~do_rf_timed(min_n = ..1, mtry = ..2, suffix = 'nw_wo_qb_event_w_d1')
+        ~do_rf_timed(min_n = ..1, mtry = ..2, suffix = 'nw_wo_qb_event_w_d1_s_o')
       )
   )
 res_grid_rf
+
+# final ----
+.path <- function(prefix, path_suffix = 'tp-final', ext) {
+  file.path('inst', sprintf('%s-%s.%s', prefix, path_suffix, ext))
+}
+
+path_fit <- .path('fit', ext = 'rds')
+path_probs <- .path('probs', ext = 'parquet')
+path_acc <- .path('acc', ext = 'csv')
+
+rec <-
+  recipes::recipe(fmla, data = features_wide_min) %>%
+  recipes::update_role(
+    idx,
+    all_of(cols_id),
+    all_of(cols_id_model),
+    new_role = 'extra'
+  )
+rec
+
+spec <-
+  parsnip::rand_forest(
+    trees = 500,
+    min_n = 2,
+    mtry = 38
+  ) %>%
+  parsnip::set_mode('classification') %>%
+  parsnip::set_engine('ranger')
+spec
+
+wf <-
+  workflows::workflow() %>%
+  workflows::add_recipe(rec) %>%
+  workflows::add_model(spec)
+fit <- parsnip::fit(wf, features_wide_min)
+
+write_rds(fit, path_fit)
+
+probs <-
+  rebind_probs(fit, features_wide_min, 'all')
+probs
+probs %>% count(idx_o_target)
+
+probs_long_filt <-
+  probs %>%
+  select(-c(.set, .pred_class)) %>%
+  filter(event == 'pass_forward') %>%
+  mutate(across(c(idx_o_target), as.integer)) %>%
+  pivot_longer(
+    matches('[.]pred_[1-9]'),
+    names_to = 'name',
+    values_to = 'prob'
+  ) %>%
+  separate(name, into = c('dummy', 'idx_o_target_pred'), sep = '_') %>%
+  mutate(across(idx_o_target_pred, as.integer)) %>%
+  filter(idx_o_target == idx_o_target_pred)
+probs_long_filt
+
+viz_probs_filt <-
+  probs_long_filt %>%
+  mutate(across(idx_o_target_pred, factor)) %>%
+  ggplot() +
+  aes(x = prob) +
+  geom_histogram(binwidth = 0.05) +
+  facet_wrap(~idx_o_target_pred, scales = 'free')
+arrow::write_parquet(probs, path_probs)
+
+acc <-
+  probs %>%
+  nest(data = -c(.set, event)) %>%
+  mutate(res = map(data, ~yardstick::accuracy(.x, idx_o_target, .pred_class))) %>%
+  select(-data) %>%
+  unnest(res) %>%
+  arrange(.set, event)
+acc
+
+write_csv(acc, path_acc)

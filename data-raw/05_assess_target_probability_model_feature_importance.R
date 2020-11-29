@@ -11,14 +11,15 @@
   path
 }
 
-fit_params <- list(prefix = 'nw_wo_qb', min_n = 2, mtry = 29)
+fit_params <- list(prefix = 'nw_wo_qb_event_w_d1_s', min_n = 2, mtry = 38)
 .path_best <- partial(.path, prefix2 = fit_params$prefix, min_n = fit_params$min_n, mtry = fit_params$mtry, ... = )
-fit <- .path_best(prefix1 = 'fit' %>% read_rds()
+fit <- .path_best(what = 'fit') %>% read_rds()
 fit_wf <- fit %>% workflows::pull_workflow_fit()
 probs <- .path_best(what = 'probs') %>% arrow::read_parquet()
 probs
 
 cols_features_wide <- fit_wf$fit$forest$independent.variable.names
+cols_features_wide %>% length()
 cols_features_wide %>% sort() %>% str_remove_all('_[1-5]$') %>% unique()
 
 # ...

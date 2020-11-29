@@ -77,3 +77,4 @@ viz_acc_filt <-
   theme_classic() +
   theme(legend.position = 'right')
 viz_acc_filt
+
