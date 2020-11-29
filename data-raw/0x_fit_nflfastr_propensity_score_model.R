@@ -280,7 +280,7 @@ epa_model_data <-
     label = as.factor(label),
     label = as.numeric(label),
     label = label - 1,
-    across(is_pick_play, ~coalesce(.x, 0L)),
+    across(is_pick_play, ~coalesce(.x, 0L) %>% factor()),
     # Calculate the drive difference between the next score drive and the
     # current play drive:
     Drive_Score_Dist = Drive_Score_Half - drive,
@@ -324,9 +324,9 @@ epa_model_data <-
     down4,
     posteam_timeouts_remaining,
     defteam_timeouts_remaining,
-    Drive_Score_Dist, # added just for info purposes
-    Drive_Score_Dist_W, # added
-    ScoreDiff_W, # added
+    # Drive_Score_Dist, # added just for info purposes
+    # Drive_Score_Dist_W, # added
+    # ScoreDiff_W, # added
     Total_W_Scaled
   ) %>%
   # There are some duplicates for some reason... Seems to be due to the nflfastR data.
@@ -334,25 +334,25 @@ epa_model_data <-
   filter(row_number() == 1L) %>%
   ungroup()
 
-epa_model_data %>%
-  select(matches('_(W|Dist)')) %>%
-  mutate(idx = row_number()) %>%
-  # relocate(idx) %>%
-  pivot_longer(
-    -idx
-  ) %>%
-  ggplot() +
-  aes(x = value) +
-  geom_histogram() +
-  facet_wrap(~name, scales = 'free')
-
-epa_model_data %>%
-  relocate(matches('_W|_Dist')) %>%
-  arrange(-Total_W_Scaled)
-# usethis::use_data(epa_model_data, overwrite = TRUE)
-epa_model_data
+# epa_model_data %>%
+#   select(matches('_(W|Dist)')) %>%
+#   mutate(idx = row_number()) %>%
+#   # relocate(idx) %>%
+#   pivot_longer(
+#     -idx
+#   ) %>%
+#   ggplot() +
+#   aes(x = value) +
+#   geom_histogram() +
+#   facet_wrap(~name, scales = 'free')
+#
+# epa_model_data %>%
+#   relocate(matches('_W|_Dist')) %>%
+#   arrange(-Total_W_Scaled)
+# epa_model_data
 # epa_model_data %>% count(game_id, play_id) %>% filter(n > 1L) %>% head(1) %>% inner_join(epa_model_data) %>% glimpse()
 
+nms <- epa_model_data %>% names()
 col_wt <- 'Total_W_Scaled'
 col_y <- 'label'
 col_y_propensity <- 'is_pick_play'
@@ -360,6 +360,64 @@ cols_extra <- c('game_id', 'play_id', 'epa')
 cols_extra_propensity <- c(cols_extra, 'label')
 cols_nonx <- c(col_y, cols_extra, col_wt)
 cols_nonx_propensity <- c(col_y_propensity, cols_extra_propensity, col_wt)
+cols_features_propensity <- setdiff(nms, cols_nonx_propensity)
+
+fmla <- generate_formula(data = epa_model_data, y = col_y_propensity, x_include = cols_features_propensity, intercept = TRUE)
+fmla
+
+fit <-
+  glm(fmla, data = epa_model_data, family = stats::binomial, weights = Total_W_Scaled)
+fit
+
+coefs <-
+  fit %>%
+  broom::tidy() %>%
+  mutate(
+    across(term, ~fct_reorder(.x, estimate)),
+    lo = estimate - 1.96 * std.error,
+    hi = estimate + 1.96 * std.error,
+    is_signif = if_else(p.value < 0.05, TRUE, FALSE)
+  )
+
+viz_coefs <-
+  coefs %>%
+  ggplot() +
+  aes(y = term, x = estimate, color = is_signif) +
+  geom_point(size = 2) +
+  geom_errorbarh(aes(xmin = lo, xmax = hi), size = 1) +
+  scale_color_manual(values = c(`TRUE` = 'red', `FALSE` = 'black')) +
+  geom_vline(data = tibble(), aes(xintercept = 0), linetype = 2) +
+  guides(color = FALSE) +
+  theme_classic() +
+  labs(
+    title = 'Propensity Score Model',
+    y = NULL, x = 'Estimate'
+  )
+viz_coefs
+
+
+
+terms
+rec <-
+  epa_model_data %>%
+  recipes::recipe(fmla, data = .)
+
+spec <-
+  parsnip::logistic_reg(
+    weights = epa_model_data[[col_wt]]
+  ) %>%
+  parsnip::set_mode('classification') %>%
+  parsnip::set_args(weights = epa_model_data[[col_wt]]) %>%
+  parsnip::set_engine('glm') # , weights = epa_model_data[[col_wt]])
+spec
+spec %>% parsnip::set_args(weights = epa_model_data[[col_wt]]) %>% parsnip::translate()
+
+wf <-
+  workflows::workflow() %>%
+  workflows::add_recipe(rec) %>%
+  workflows::add_model(spec)
+fit <- parsnip::fit(wf, epa_model_data)
+fit
 
 nrounds_propensity <- 525
 params_propensity <-

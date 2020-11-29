@@ -73,12 +73,12 @@ cols_id <-
 # nw: 'qb_o', 'los', 'qb_x', 'qb_y', 'dist_qb_ball'
 cols_static_value <-
   c(
-    'qb_o', 'los', 'qb_x', 'qb_y'
+    'qb_o', 'los', 'qb_x', 'qb_y' # , 'event', 'event_lag1'
   )
 cols_id_model <-
   c(
     'event',
-    # 'event_lag1',
+    'event_lag1',
     'idx'
   )
 cols_static <-
@@ -89,11 +89,11 @@ cols_static <-
     # 'yards_to_go',
     cols_static_value
   )
-cols_pivot_name <- c('idx_o')
+cols_pivot_name <- 'idx_o'
 # nw: , 'x', 'y', 'dist_ball', 'dist_d_robust', 'dist_ball_d_robust', 'dist_qb', 'dist_qb_d_robust'
 cols_pivot_value <-
   c(
-    'dist_ball', 'dist_d_robust', 'dist_ball_d_robust', 'x', 'y', 's', 's_d_robust', 'o', 'o_d_robust' # , 'a', 'a_d_robust', 'o', 'o_d_robust'
+    'x', 'y', 'dist_ball', 'dist_d_robust', 'dist_ball_d_robust', 'dist_d1_naive' # , 's', 's_d_robust', 'o', 'o_d_robust' # , 'a', 'a_d_robust', 'o', 'o_d_robust'
   )
 cols_keep <-
   c(
@@ -115,7 +115,10 @@ features_wide <-
   filter(rn == max(rn)) %>%
   ungroup() %>%
   select(-rn) %>%
-  left_join(routes) %>%
+  left_join(
+    routes,
+    by = c('week', 'game_id', 'play_id', 'nfl_id')
+  ) %>%
   mutate(
     across(matches('^x_|_x'), ~los + .x),
     across(c(cols_pivot_value), ~case_when(is.na(route) ~ 9999, TRUE ~ .x)),
@@ -156,13 +159,14 @@ fmla <- paste0(col_y, ' ~ .') %>% as.formula()
 rec <-
   recipes::recipe(fmla, data = trn) %>%
   recipes::update_role(
-    idx,
+    #A idx,
     all_of(cols_id),
+    all_of(cols_id_model),
     new_role = 'extra'
-  ) %>%
-  recipes::step_dummy(
-    matches('event')
-  )
+  ) # %>%
+  # recipes::step_dummy(
+  #   matches('event')
+  # )
 rec
 
 rebind_probs <- function(fit, set, nm = deparse(substitute(set))) {
@@ -177,9 +181,7 @@ rebind_probs <- function(fit, set, nm = deparse(substitute(set))) {
 
 nms_wide <- features_wide_min %>% names()
 cols_features_wide <- setdiff(nms_wide, c(cols_id, cols_id_model, col_y))
-n_features <- cols_features_wide %>% length() # 40
-n_features
-c(3, 5, 7) %>% {. / 8 * n_features} %>% floor()
+n_features <- cols_features_wide %>% length()
 grid_params_rf <-
   crossing(
     # min_n = c(2, 10, 25),
@@ -187,6 +189,8 @@ grid_params_rf <-
     # mtry = c(5, 14, 25)
     mtry = c(5, 7) %>% {. / 8 * n_features} %>% floor()
   )
+# grid_params_rf <- tibble(min_n = 2, mtry = n_features)
+# grid_params_rf
 grid_params_rf
 
 do_rf <- function(min_n = 2, mtry = 42, trees = 500, suffix = 'w_s_o', overwrite = FALSE) {
@@ -273,183 +277,15 @@ do_rf <- function(min_n = 2, mtry = 42, trees = 500, suffix = 'w_s_o', overwrite
 }
 
 do_rf_timed <- .time_it(do_rf)
-# grid_params_rf <- tibble(min_n = 2, mtry = n_features)
-# grid_params_rf
-res_grid_rf <- grid_params_rf %>% mutate(acc = map2(min_n, mtry, ~do_rf_timed(min_n = ..1, mtry = ..2, suffix = 'w_s_o')))
-res_grid_rf
 
-acc_grid_init <-
-  res_grid_rf %>%
-  mutate(idx = row_number()) %>%
-  relocate(idx)
-
-acc_grid <-
-  acc_grid_init %>%
-  unnest(acc)
-acc_grid
-
-acc_grid_filt <-
-  acc_grid %>%
-  filter(.set == 'tst', .metric == 'accuracy', event != 'pass_forward')
-
-acc_grid_filt_agg <-
-  acc_grid_filt %>%
-  group_by(idx) %>%
-  summarize(across(.estimate, mean)) %>%
-  ungroup() %>%
-  mutate(rnk = row_number(-.estimate)) %>%
-  arrange(rnk) %>%
-  left_join(acc_grid_init %>% select(-acc))
-acc_grid_filt_agg
-
-# acc %>%
-#   filter(.set == 'tst', .metric == 'accuracy', event != 'pass_forward') %>%
-#   summarize(across(.estimate, mean))
-
-viz_acc_filt <-
-  acc_grid_filt %>%
-  left_join(acc_grid_filt_agg %>% select(idx, rnk)) %>%
-  # filter(event != 'pass_forward') %>%
+grid_params_rf
+res_grid_rf <-
+  grid_params_rf %>%
   mutate(
-    # across(idx, ordered),
-    grp = sprintf('mtry=%d, min_n=%d', mtry, min_n) %>% fct_reorder(rnk),
-    # sec = case_when(
-    #   event == 'pass_forward' ~ 3.5,
-    #   TRUE ~ event %>% str_remove(' sec') %>% as.double()
-    # ),
-    sec = event %>% str_remove(' sec') %>% as.double()
-  ) %>%
-  ggplot() +
-  aes(x = sec, y = .estimate, color = grp) +
-  geom_point(aes(size = -rnk)) +
-  geom_line() +
-  theme_classic()
-viz_acc_filt
-
-# extra ----
-.file_path <- function(prefix1 = c('acc', 'fit', 'probs'), prefix2 = c('nw', 'w_a_o'), min_n, mtry, trees = 500) {
-  prefix1 <- match.arg(prefix1)
-  prefix2 <- match.arg(prefix2)
-  ext <- switch(prefix1, 'acc' = 'csv', 'fit' = 'rds', 'probs' = 'parquet')
-  file.path('inst', sprintf('%s-%s-min_n=%d-mtry=%d-trees=%d.%s', prefix1, prefix2, min_n, mtry, trees, ext))
-}
-
-best_fit_params <- acc_grid_filt_agg %>% filter(rnk == 1L)
-best_fit_params
-best_fit <- .file_path(prefix1 = 'fit', prefix2 = 'nw', min_n = best_fit_params$min_n, mtry = best_fit_params$mtry) %>% read_rds()
-best_fit
-
-fit_wf <- fit %>% workflows::pull_workflow_fit()
-
-trn_jui <-
-  rec %>%
-  recipes::prep(training = trn) %>%
-  recipes::juice()
-x_trn_jui <-  trn_jui[, setdiff(names(trn_jui), col_y)] %>% as.matrix()
-y_trn_jui <- trn_jui[[col_y]] %>% as.integer() - 1L
-
-f_predict <- function(object, newdata) {
-  predict(object, data = newdata)$predictions
-}
-
-vip_wrapper <- function(method, ...) {
-  res <-
-    vip::vip(
-      method = method,
-      ...
-    ) %>%
-    pluck('data') %>%
-    # Will get a "Sign" column when using the default `method = 'model'`.
-    rename(var = Variable, imp = Importance)
-
-  if(any(names(res) == 'Sign')) {
-    res <-
-      res %>%
-      mutate(dir = ifelse(Sign == 'POS', +1L, -1L)) %>%
-      mutate(imp = dir * imp)
-  }
-  res
-}
-
-vip_wrapper_partial <-
-  partial(
-    vip_wrapper,
-    object = fit_wf$fit,
-    num_features = x_trn_jui %>% ncol(),
-    ... =
+    acc =
+      map2(
+        min_n, mtry,
+        ~do_rf_timed(min_n = ..1, mtry = ..2, suffix = 'nw_wo_qb_event_w_d1')
+      )
   )
-
-metric <- 'sse'
-vip_wrapper_partial_permute <-
-  partial(
-    vip_wrapper_partial,
-    method = 'permute',
-    metric = metric,
-    pred_wrapper = f_predict,
-    ... =
-  )
-
-# set.seed(42)
-# vip_wrapper_partial_shap <-
-#   partial(
-#     vip_wrapper_partial,
-#     method = 'shap',
-#     train = x_trn_jui,
-#     ... =
-#   )
-
-# vi_vip_model <- vip_wrapper_partial(method = 'model')
-vi_vip_permute <-
-  vip_wrapper_partial_permute(
-    train = x_trn_jui %>% as.data.frame(),
-    target = y_trn_jui
-  )
-vi_vip_permute
-vi_vip_permute %>% arrange(-abs(imp))
-# vi_vip_shap <- vip_wrapper_partial_shap(pred_wrapper = f_predict)
-# vi_vip_shap
-
-#
-# spec <-
-#   parsnip::rand_forest(
-#     trees = 500,
-#     # Model complexity
-#     min_n = tune::tune(),
-#     # Randomness
-#     mtry = tune::tune()
-#   ) %>%
-#   parsnip::set_mode('classification') %>%
-#   parsnip::set_engine('ranger')
-# spec
-#
-# wf <-
-#   workflows::workflow() %>%
-#   workflows::add_recipe(rec) %>%
-#   workflows::add_model(spec)
-#
-# params_grid <-
-#   dials::grid_latin_hypercube(
-#     dials::min_n(),
-#     dials::finalize(dials::mtry(), trn),
-#     size = 5
-#   )
-# params_grid
-#
-# folds <- trn %>% rsample::vfold_cv(strata = col_y)
-# # fit <- wf %>% parsnip::fit(trn)
-# # cl <- parallel::makeCluster(2)
-# # doParallel::registerDoParallel(cl)
-# # require(yardstick)
-# res_tune <-
-#   tune::tune_grid(
-#     wf,
-#     resamples = folds,
-#     # metric = yardstick::metric_set(yardstick::roc_auc),
-#     control = tune::control_grid(verbose = TRUE)
-#   )
-# write_rds(res_tune, file.path('inst', 'res_tune_rf.rds'))
-# metrics <-
-#   res_tune %>%
-#   tune::collect_metrics()
-# metrics
-# res_tune %>% tune::select_best(metric = 'accuracy')
+res_grid_rf

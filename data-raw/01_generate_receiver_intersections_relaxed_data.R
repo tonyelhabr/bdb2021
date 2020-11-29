@@ -100,12 +100,12 @@ do_identify_receiver_intersections <- function(n_halfseconds = 7L, ...) {
 
 weeks <- 1:17L
 # weeks <- 1L
-receiver_intersections_relaxed <- weeks %>% do_by_week(f = do_identify_receiver_intersections)
+receiver_intersections <- weeks %>% do_by_week(f = do_identify_receiver_intersections)
 
 # Adjust seconds so that pick plays are more correctly categorized---by half second split and not "up until x seconds".
 
 pick_play_ids_adj <-
-  receiver_intersections_relaxed %>%
+  receiver_intersections %>%
   dplyr::filter(has_intersection) %>%
   tidyr::unnest(intersection) %>%
   # dplyr::filter(nfl_id < nfl_id_intersect) %>%
@@ -125,15 +125,15 @@ pick_play_ids_adj <-
   dplyr::arrange(.data$week, .data$game_id, .data$play_id, .data$sec, .data$nfl_id, .data$nfl_id_intersect)
 pick_play_ids_adj
 
-receiver_intersections_relaxed_adj <-
+receiver_intersections_adj <-
   pick_play_ids_adj %>%
   dplyr::semi_join(
-    receiver_intersections_relaxed,
+    receiver_intersections,
     by = c('week', 'game_id', 'play_id', 'n_route', 'n_intersection', 'sec')
   )
 
-receiver_intersections_relaxed_adj <-
-  receiver_intersections_relaxed_adj %>%
+receiver_intersections_adj <-
+  receiver_intersections_adj %>%
   inner_join(
     features %>%
       select(game_id, play_id, sec, nfl_id, x, y),
@@ -157,8 +157,8 @@ receiver_intersections_relaxed_adj <-
   ungroup() %>%
   mutate(is_lo = x_idx_frac <= 0.5) %>%
   select(-x_idx_frac)
-receiver_intersections_relaxed_adj
+receiver_intersections_adj
 
-usethis::use_data(receiver_intersections_relaxed, overwrite = TRUE)
+usethis::use_data(receiver_intersections, overwrite = TRUE)
 usethis::use_data(pick_play_ids_adj, overwrite = TRUE)
-usethis::use_data(receiver_intersections_relaxed_adj, overwrite = TRUE)
+usethis::use_data(receiver_intersections_adj, overwrite = TRUE)
