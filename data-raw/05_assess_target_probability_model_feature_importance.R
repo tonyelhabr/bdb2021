@@ -1,9 +1,10 @@
 
-.path <- function(what = c('acc', 'fit', 'probs'), prefix2 = c('nw', 'nw_wo_qb', 'w_a_o'), min_n, mtry, trees = 500, strict = TRUE) {
+library(tidyverse)
+.path <- function(what = c('acc', 'fit', 'probs'), prefix, min_n, mtry, trees = 500, strict = TRUE) {
   what <- match.arg(what)
   # prefix2 <- match.arg(prefix2)
   ext <- switch(what, 'acc' = 'csv', 'fit' = 'rds', 'probs' = 'parquet')
-  path <- file.path('inst', sprintf('%s-%s-min_n=%d-mtry=%d-trees=%d.%s', what, prefix2, min_n, mtry, trees, ext))
+  path <- file.path('inst', sprintf('%s-%s-min_n=%d-mtry=%d-trees=%d.%s', what, prefix, min_n, mtry, trees, ext))
   if(!strict) {
     return(path)
   }
@@ -11,9 +12,11 @@
   path
 }
 
-fit_params <- list(prefix = 'nw_wo_qb_event_w_d1_s', min_n = 2, mtry = 38)
-.path_best <- partial(.path, prefix2 = fit_params$prefix, min_n = fit_params$min_n, mtry = fit_params$mtry, ... = )
-fit <- .path_best(what = 'fit') %>% read_rds()
+# 'nw_wo_qb_event_w_d1_s'
+fit_params <- list(prefix = 'tp-final', min_n = 2, mtry = 38)
+.path_best <- partial(.path, prefix = fit_params$prefix, min_n = fit_params$min_n, mtry = fit_params$mtry, ... = )
+# fit <- .path_best(what = 'fit') %>% read_rds()
+fit <- file.path('fit-tp-final.parquet')
 fit_wf <- fit %>% workflows::pull_workflow_fit()
 probs <- .path_best(what = 'probs') %>% arrow::read_parquet()
 probs
