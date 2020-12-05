@@ -97,7 +97,10 @@ do_generate_features_at_events <- function(week = 1L, overwrite_features = FALSE
       dplyr::across(c(.data$y, .data$ball_y, .data$qb_y), ~ dplyr::if_else(.data$play_direction == 'left', !!y_max - .x, .x))
     )
 
-  frames <- tracking %>% filter_notable_events()
+  frames <-
+    tracking %>%
+    filter_notable_events() %>%
+    distinct()
 
   snap_frames <- tracking %>% dplyr::filter(.data$event == 'ball_snap')
 
@@ -127,35 +130,45 @@ do_generate_features_at_events <- function(week = 1L, overwrite_features = FALSE
     frames_first_o %>%
     dplyr::count(.data$game_id, .data$play_id)
 
-  # frames_clean <-
-  #   frames %>%
-  #   # Get rid of the entire play.
-  #   dplyr::anti_join(
-  #     frames_n %>%
-  #       dplyr::filter(.data$n == 1L | .data$n > 20L),
-  #     by = c('game_id', 'play_id')
-  #   ) %>%
-  #   dplyr::anti_join(
-  #     frames_n_o %>%
-  #       # Plays starting with less than 5 have a defensive player playing on offense.
-  #       # Plays starting with more than 5 have an offensive player playing on defense.
-  #       dplyr::filter(.data$n != 5L),
-  #     by = c('game_id', 'play_id')
-  #   )
-  frames_clean <- frames
+  frames_first_idx_o <-
+    frames_first_o %>%
+    dplyr::group_by(.data$game_id, .data$play_id) %>%
+    dplyr::mutate(
+      dist_ball = .dist(.data$x, .data$ball_x, .data$y, .data$ball_y),
+      idx_o = dplyr::row_number(.data$dist_ball)
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(.data$game_id, .data$play_id, .data$nfl_id, .data$idx_o)
+  frames_first_idx_o
 
-  frames_clean_o <-
-    frames_clean %>%
-    .select_side(side = 'O')
+  frames_target <-
+    frames_first_idx_o %>%
+    dplyr::left_join(
+      plays %>%
+        dplyr::select(
+          .data$game_id,
+          .data$play_id,
+          .data$target_nfl_id
+        ),
+      by = c('game_id', 'play_id')
+    ) %>%
+    dplyr::mutate(
+      is_target = dplyr::if_else(.data$nfl_id == .data$target_nfl_id, 1L, 0L)
+    )
 
-  frames_clean_o_renamed <-
-    frames_clean_o %>%
+  frames_o <-
+    frames %>%
+    .select_side(side = 'O') %>%
+    distinct()
+
+  frames_o_renamed <-
+    frames_o %>%
     rename_with(~sprintf('%s_%s', .x, 'o'), -c(.data$game_id, .data$play_id, .data$frame_id, .data$event))
 
   min_dists_naive_o <-
-    frames_clean_o %>%
+    frames_o %>%
     dplyr::left_join(
-      frames_clean_o_renamed,
+      frames_o_renamed,
       by = c('game_id', 'play_id', 'frame_id', 'event')
     ) %>%
     dplyr::mutate(dist_o = .dist(.data$x, .data$x_o, .data$y, .data$y_o)) %>%
@@ -165,8 +178,8 @@ do_generate_features_at_events <- function(week = 1L, overwrite_features = FALSE
     dplyr::ungroup() %>%
     select(game_id, play_id, frame_id, event, nfl_id, matches('_o'))
 
-  frames_clean_qb <-
-    frames_clean %>%
+  frames_qb <-
+    frames %>%
     dplyr::distinct(
       .data$game_id,
       .data$play_id,
@@ -181,18 +194,19 @@ do_generate_features_at_events <- function(week = 1L, overwrite_features = FALSE
       .data$qb_dir
     )
 
-  frames_clean_d <-
-    frames_clean %>%
-    .select_side(side = 'D')
+  frames_d <-
+    frames %>%
+    .select_side(side = 'D') %>%
+    distinct()
 
-  frames_clean_d_renamed <-
-    frames_clean_d %>%
+  frames_d_renamed <-
+    frames_d %>%
     rename_with(~sprintf('%s_%s', .x, 'd'), -c(game_id, play_id, frame_id, event))
 
   min_dists_naive_qb <-
-    frames_clean_qb %>%
+    frames_qb %>%
     dplyr::left_join(
-      frames_clean_d %>%
+      frames_d %>%
         rename_with(~sprintf('%s_%s', .x, 'rusher'), -c(game_id, play_id, frame_id, event)),
       by = c('game_id', 'play_id', 'frame_id', 'event')
     ) %>%
@@ -202,9 +216,9 @@ do_generate_features_at_events <- function(week = 1L, overwrite_features = FALSE
     dplyr::ungroup()
 
   min_dists_naive_d_init <-
-    frames_clean_o %>%
+    frames_o %>%
     dplyr::left_join(
-      frames_clean_d %>%
+      frames_d %>%
         rename_with(~sprintf('%s_%s', .x, 'd'), -c(game_id, play_id, frame_id, event)),
       by = c('game_id', 'play_id', 'frame_id', 'event')
     ) %>%
@@ -218,12 +232,12 @@ do_generate_features_at_events <- function(week = 1L, overwrite_features = FALSE
     # min_dists_robust %>%
     # select(-matches('idx_o'), -target_nfl_id) %>%
     # rename_with(~sprintf('%s_robust', .x), matches('_d$')) %>%
-    frames_clean_o %>%
-    # full_join(
-    #   frames_clean_d_renamed %>%
-    #     rename_with(~sprintf('%s_robust', .x), matches('_d$')),
-    #   by = c('game_id', 'play_id', 'frame_id', 'event', 'nfl_id_d_robust')
-    # ) %>%
+    frames_o %>%
+    full_join(
+      frames_target %>% rename(nfl_id_target = target_nfl_id),
+      by = c('game_id', 'play_id', 'nfl_id')
+    ) %>%
+    # distinct() %>%
     # Add closest other defender.
     dplyr::full_join(
       min_dists_naive_d_init %>%
@@ -252,7 +266,7 @@ do_generate_features_at_events <- function(week = 1L, overwrite_features = FALSE
     ) %>%
     # Add "static" info for each frame.
     dplyr::left_join(
-      frames_clean %>%
+      frames %>%
         dplyr::select(
           .data$game_id,
           .data$play_id,
