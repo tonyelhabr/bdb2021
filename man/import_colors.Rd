@@ -4,13 +4,7 @@
 \alias{import_colors}
 \title{Import team colors data}
 \usage{
-import_colors(dir = .get_dir())
-}
-\arguments{
-\item{dir}{Directory where file is stored, which is dependent on whether
-the code is run locally or on Kaggle.
-Best to change with \code{options(bdb2021.dir = <dir>)} so that other \code{import_}
-functions have the same change.}
+import_colors()
 }
 \description{
 Import team colors data

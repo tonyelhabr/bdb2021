@@ -4,10 +4,12 @@
 \alias{compute_min_distances}
 \title{Compute min distances between players.}
 \usage{
-compute_min_distances(o, d)
+compute_min_distances(o, d, one_pass = TRUE)
 }
 \arguments{
-\item{data}{A data.frame with 4 columns: \code{nfl_id}, \code{side} (either "O" or "D"), \code{x}, \code{y}.}
+\item{o, d}{A data.frame with 3 columns: \code{nfl_id}, \code{x}, \code{y}.}
+
+\item{one_pass}{A boolean indicating whether to pass through defenders just once (for a one-to-one assignment), probably leaving some defenders without a matched offensive player. If \code{FALSE}, two passes are done (to assigned double coverers.}
 }
 \value{
 A tibble with 6 columns: \code{nfl_id_o}, \code{nfl_id_d}, \code{x_o}, \code{x_d}, \code{y_o}, \code{y_d}.

@@ -1,14 +1,16 @@
 
 #' Identify route intersection
 #'
-#' @description Identify if two routes intersect.
-#' @param data Tracking data for a single play
-#' @param pad_backwards Boolean for whether to extend route backwards
-#' @param pad_x if \code{pad_backwards = TRUE}, this is the number of yards to extend the route
+#' Identify if two routes intersect.
+#'
+#' @param data Tracking data for a single play.
+#' @param pad_backwards Boolean for whether to extend route backwards.
+#' @param pad_x If `pad_backwards = TRUE`, this is the number of yards to extend the route.
 #' @examples
 #' \dontrun{
 #' identify_intersection()
 #' }
+#' @export
 identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
   nfl_ids <- data %>% dplyr::distinct(nfl_id) %>% dplyr::pull(nfl_id)
   if(length(nfl_ids) <= 1L) {
@@ -42,14 +44,13 @@ identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
         )
     ) %>%
     dplyr::select(nfl_id, line)
-  # browser()
+
   line1 <- data_trans %>% slice(2) %>% pull(line) %>% pluck(1)
   line2 <- data_trans %>% slice(3) %>% pull(line) %>% pluck(1)
   sf::st_intersects(line1, line2) %>% as.integer()
   sf::st_intersection(line1, line2) %>% as.numeric()
   sf::st_join(line1, line2)
-  # 2541316
-  # 2543646
+
   res <-
     tidyr::crossing(
       nfl_id = nfl_ids,

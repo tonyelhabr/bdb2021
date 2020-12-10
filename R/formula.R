@@ -25,6 +25,15 @@
     unique(x)
   }
 
+#' Generate a model formula
+#'
+#' @param data data.frame
+#' @param y character representing the response variable in the `data`
+#' @param x character vector representing the independent variables to include in the resulting formula
+#' @param x_include,x_exclude explicit variables (or columns) in `data` to include or not include in the model formula
+#' @param rgx_x_include,rgx_x_exclude Like `x_include` and `x_exclude`, but regular expressions
+#' @param intercept Boolean indicating whether to include an intercept term
+#' @export
 generate_formula <-
   function(data,
            y,
@@ -66,7 +75,7 @@ generate_formula <-
     if (!intercept) {
       suffix <- ' + 0'
     } else {
-      suffix <- ' + 0'
+      suffix <- ' + 1'
     }
 
     vars_x <- paste0(vars_x, suffix)

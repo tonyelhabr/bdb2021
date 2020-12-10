@@ -26,9 +26,8 @@ plot_play(
   filename = sprintf("\%s-\%s.png", game_id, play_id),
   path = file.path(dir, filename),
   width = 10,
-  height = 12,
-  ...,
-  .verbose = .get_verbose()
+  height = 10,
+  ...
 )
 }
 \arguments{

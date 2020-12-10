@@ -14,8 +14,7 @@ add_x_side_col(data, cutoff = 2.5)
 \description{
 If player's \code{x} is less than \code{abs(ball_x - cutoff)}
 (accounting for \code{play_direction}), then \code{x_side} is
-\code{"los"} (line of scrimmage).
-Otherwise, it is \code{"backfield"}.
+\code{"los"} (line of scrimmage). Otherwise, it is \code{"backfield"}.
 }
 \examples{
 \dontrun{

@@ -1,12 +1,12 @@
 
-#' Add \code{x_side} column
+#' Add `x_side` column
 #'
-#' @description If player's \code{x} is less than \code{abs(ball_x - cutoff)}
-#' (accounting for \code{play_direction}), then \code{x_side} is
-#' \code{"los"} (line of scrimmage).
-#' Otherwise, it is \code{"backfield"}.
+#' If player's `x` is less than `abs(ball_x - cutoff)`
+#' (accounting for `play_direction`), then `x_side` is
+#' `"los"` (line of scrimmage). Otherwise, it is `"backfield"`.
+#'
 #' @param data Tracking data
-#' @param cutoff Yards behind ball (towards backfield) within which to consider \code{"los"} (line of scrimmage).
+#' @param cutoff Yards behind ball (towards backfield) within which to consider `"los"` (line of scrimmage).
 #' @examples
 #' \dontrun{
 #' library(bdb2021)
@@ -25,14 +25,6 @@
 #' }
 add_x_side_col <- function(data, cutoff = 2.5) {
   data %>%
-    # mutate(
-    #   x_side =
-    #     case_when(
-    #       play_direction == 'left' & (x + !!cutoff) > ball_x ~ 'backfield',
-    #       play_direction == 'right' & (x + !!cutoff) < ball_x ~ 'backfield',
-    #       TRUE ~ NA_character_
-    #     )
-    # )
     dplyr::mutate(
       x_side =
         dplyr::if_else(
@@ -43,14 +35,14 @@ add_x_side_col <- function(data, cutoff = 2.5) {
     )
 }
 
-#' Add \code{y_side} column
+#' Add `y_side` column
 #'
-#' @description If player's \code{y} is less than or more than \code{abs(ball_y - cutoff)}
-#' (accounting for \code{play_direction}), then \code{y_side} is
-#' \code{"left"} or \code{"right"}.
-#' Otherwise, it is \code{"mid"}.
+#' If player's `y` is less than or more than `abs(ball_y - cutoff)`
+#' (accounting for `play_direction`), then `y_side` is
+#' `"left"`or `"right"`. Otherwise, it is `"mid"`.
+#'
 #' @param data Tracking data
-#' @param cutoff Yards horizontally along same of plane of ball to consider \code{"mid"}.
+#' @param cutoff Yards horizontally along same of plane of ball to consider `"mid"`.
 #' @examples
 #' \dontrun{
 #' library(bdb2021)
@@ -86,12 +78,12 @@ add_y_side_col <- function(data, cutoff = 3) {
     )
 }
 
-#' Add a \code{x_side} and \code{y_side} columns
+#' Add a `x_side` and `y_side` columns
 #'
 #' @param data Tracking data
-#' @param cutoff_x \code{cutoff} for \code{add_x_side()}
-#' @param cutoff_y \code{cutoff} for \code{add_y_side()}
-#' @seealso \code{\link{add_x_side}} \code{\link{add_y_side}}
+#' @param cutoff_x `cutoff` for `add_x_side()`
+#' @param cutoff_y `cutoff` for `add_y_side()`
+#' @export
 add_side_cols <- function(data, cutoff_x = 2.5, cutoff_y = 3) {
   data %>%
     add_x_side_col(cutoff = cutoff_x) %>%
@@ -103,37 +95,17 @@ add_side_cols <- function(data, cutoff_x = 2.5, cutoff_y = 3) {
 #' @description Drop frames that do not meet these criteria:
 #' \itemize{
 #'   \item offense
-#'   \item has non-\code{NA} route
-#'   \item \code{y_side != "mid"}
-#'   \item \code{y_side != "backfield"}
+#'   \item has non-`NA` route
+#'   \item `y_side != "mid"`
+#'   \item `y_side != "backfield"`
 #' }
-#' \code{x_side} and \code{y_side} columns are expected
-#' to already exist in \code{data}
-#' (so \code{add_x_side} and \code{add_y_side} functions should be called before).
-#' @param data Tracking data with \code{x_side} and \code{y_side} columns
+#' `x_side` and `y_side` columns are expected
+#' to already exist in `data`
+#' (so `add_x_side()` and `add_y_side()` functions should be called before).
+#' @param data Tracking data with `x_side` and `y_side` columns
+#' @export
 drop_ineligible_pick_route_frames <- function(data) {
   data %>%
     dplyr::filter(.data$side == 'O' & !is.na(.data$route) & .data$y_side != 'mid' & .data$x_side != 'backfield')
-}
-
-#' Add \code{idx_y} column
-#'
-#' @description Add \code{idx_y} column describing receiver's position relative
-#' to the sideline on one side of the field. \code{y_side} column is expected
-#' to already exist in \code{data}
-#' (so \code{add_y_side_col} should have already been called).
-#' @param data Tracking data with \code{y_side} column
-add_idx_y_col <- function(data) {
-  data %>%
-    dplyr::group_by(.data$game_id, .data$play_id, .data$frame_id, .data$y_side) %>%
-    dplyr::mutate(
-      idx_y =
-        dplyr::case_when(
-          .data$y_side == 'left' ~ dplyr::row_number(y),
-          .data$y_side == 'right' ~ dplyr::row_number(-y),
-          TRUE ~ NA_integer_
-        )
-    ) %>%
-    dplyr::ungroup()
 }
 

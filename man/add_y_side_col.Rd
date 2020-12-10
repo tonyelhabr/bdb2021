@@ -14,8 +14,7 @@ add_y_side_col(data, cutoff = 3)
 \description{
 If player's \code{y} is less than or more than \code{abs(ball_y - cutoff)}
 (accounting for \code{play_direction}), then \code{y_side} is
-\code{"left"} or \code{"right"}.
-Otherwise, it is \code{"mid"}.
+\code{"left"}or \code{"right"}. Otherwise, it is \code{"mid"}.
 }
 \examples{
 \dontrun{

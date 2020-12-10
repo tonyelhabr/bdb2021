@@ -1,4 +1,14 @@
 
+#' Plot a field
+#'
+#' @param yardmin,yardmax,buffer numbers
+#' @param direction `"horiz"` or `"vert"`
+#' @param field_color color
+#' @param line_color color
+#' @param sideline_color color
+#' @param endzone_color color
+#' @seealso \url{https://github.com/mlfurman3/gg_field}
+#' @export
 gg_field <- function(yardmin=0, yardmax=120, buffer=5, direction="horiz",
                      field_color='white',line_color='black',
                      sideline_color=field_color,endzone_color=field_color){

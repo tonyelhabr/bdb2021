@@ -7,11 +7,11 @@
 identify_intersection(data, pad_backwards = TRUE, pad_x = 1)
 }
 \arguments{
-\item{data}{Tracking data for a single play}
+\item{data}{Tracking data for a single play.}
 
-\item{pad_backwards}{Boolean for whether to extend route backwards}
+\item{pad_backwards}{Boolean for whether to extend route backwards.}
 
-\item{pad_x}{if \code{pad_backwards = TRUE}, this is the number of yards to extend the route}
+\item{pad_x}{If \code{pad_backwards = TRUE}, this is the number of yards to extend the route.}
 }
 \description{
 Identify if two routes intersect.

@@ -1,11 +1,18 @@
 
-#' @description Euclidean distance
+#' Calculate Euclidean distance
+#'
+#' @param x1,x2,y1,y2 Numeric values representing coordinates
+#' @noRd
 .dist <- function(x1, x2, y1, y2) {
   sqrt((x2 - x1)^2 + (y2 - y1)^2)
 }
 
-
-#' @description Used by distance calculation functions such as \code{identify_nearby_players(}
+#' Coerce to matrix
+#'
+#' Used by distance calculation functions such as `identify_nearby_players()`.
+#'
+#' @param data A data.frame with 3 columns: `nfl_id`, `x`, `y`.
+#' @noRd
 .coerce_to_mat <- function(data) {
   res <-
     data %>%
@@ -17,9 +24,12 @@
 
 #' Compute min distances between players.
 #'
-#' @description Compute "optimal" nearest assignments of defensive players to individual offensive and defensive players (not including QB) in a single frame using the Hungarian method.
-#' @param o A data.frame with 3 columns: `nfl_id`, `x`, `y`.
+#' Compute "optimal" nearest assignments of defensive players to individual offensive and defensive players (not including QB) in a single frame using the Hungarian method.
+#'
+#' @param o,d A data.frame with 3 columns: `nfl_id`, `x`, `y`.
+#' @param one_pass A boolean indicating whether to pass through defenders just once (for a one-to-one assignment), probably leaving some defenders without a matched offensive player. If `FALSE`, two passes are done (to assigned double coverers.
 #' @return A tibble with 6 columns: `nfl_id_o`, `nfl_id_d`, `x_o`, `x_d`, `y_o`, `y_d`.
+#' @export
 compute_min_distances <- function(o, d, one_pass = TRUE) {
   o_mat <- o %>% .coerce_to_mat()
   d_mat <- d %>% .coerce_to_mat()

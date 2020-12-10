@@ -16,6 +16,3 @@ add_side_cols(data, cutoff_x = 2.5, cutoff_y = 3)
 \description{
 Add a \code{x_side} and \code{y_side} columns
 }
-\seealso{
-\code{\link{add_x_side}} \code{\link{add_y_side}}
-}

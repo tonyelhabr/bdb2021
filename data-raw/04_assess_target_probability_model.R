@@ -1,9 +1,10 @@
 
 library(tidyverse)
+library(bdb2021)
 
 paths_acc <-
   fs::dir_ls(
-    'inst',
+    .get_dir_data(),
     regexp = 'acc.*csv$'
   )
 paths_acc
@@ -11,6 +12,7 @@ paths_acc
 paths_info_acc <-
   paths_acc %>%
   tibble(path = .) %>%
+  filter(path %>% str_detect('[-]tp[-]', negate = TRUE)) %>% 
   mutate(
     file = path %>% basename() %>% tools::file_path_sans_ext()
   ) %>%
@@ -59,6 +61,7 @@ viz_acc_filt <-
   acc_filt %>%
   left_join(grid_acc_filt_agg %>% select(idx, rnk)) %>%
   filter(rnk <= 8) %>%
+  filter(sec <= 3) %>% 
   # filter(event != 'pass_forward') %>%
   mutate(
     # across(idx, ordered),

@@ -19,5 +19,5 @@ Drop frames that do not meet these criteria:
 }
 \code{x_side} and \code{y_side} columns are expected
 to already exist in \code{data}
-(so \code{add_x_side} and \code{add_y_side} functions should be called before).
+(so \code{add_x_side()} and \code{add_y_side()} functions should be called before).
 }

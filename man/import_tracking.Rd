@@ -4,19 +4,14 @@
 \alias{import_tracking}
 \title{Import tracking data for a given week}
 \usage{
-import_tracking(
-  week = 1,
-  positions = import_positions(),
-  plays = import_plays(),
-  standardize = TRUE
-)
+import_tracking(week = 1, positions = import_positions(), standardize = TRUE)
 }
 \arguments{
 \item{week}{Number between 1 and 17}
 
 \item{positions}{Positions data for adding \code{side} column}
 
-\item{standardize}{Boolean. Whether to \code{x} and \code{y} based on line of scrimmage (\code{los}) and \code{play_direction}. Note that \code{los} column
+\item{standardize}{Boolean. Whether to standardize \code{x} and \code{y} based on line of scrimmage (\code{los}) and \code{play_direction}. Note that \code{los} column
 is added if TRUE.}
 }
 \description{

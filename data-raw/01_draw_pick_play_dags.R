@@ -3,23 +3,7 @@ library(tidyverse)
 library(ggdag)
 theme_set(ggdag::theme_dag())
 
-dag_epa_pick_simple <-
-  ggdag::dagify(
-    epa ~ epa_predictors,
-    epa ~ is_pick_play, #  + targeted_receiver + defensive_coverage
-    is_pick_play ~ epa_predictors,
-    exposure = 'is_pick_play',
-    outcome = 'epa',
-    labels = c(
-      'epa' = 'EPA',
-      'is_pick_play' = 'Is Pick Play',
-      # 'wp' = 'Win Probability',
-      # 'defensive_skill' = 'Defensive Skill'
-      'epa_predictors' = 'EPA Predictors'
-    )
-  )
-
-dag_epa_pick_complex <-
+dag_epa_pick <-
   ggdag::dagify(
     epa ~ epa_predictors,
     epa ~ player_tracking,
@@ -37,7 +21,7 @@ dag_epa_pick_complex <-
     )
   )
 
-dag_pick_simple <-
+dag_pick <-
   ggdag::dagify(
     epa ~ is_target + is_lo + defensive_coverage,
     is_target ~ defensive_coverage,
@@ -51,54 +35,61 @@ dag_pick_simple <-
     )
   )
 
-dag_epa_pick_simple_tidy <-
-  dag_epa_pick_simple %>%
+dag_epa_pick_tidy <-
+  dag_epa_pick %>%
   tidy_dagitty() %>%
   node_status()
-dag_epa_pick_simple_tidy
+dag_epa_pick_tidy
 
-dag_epa_pick_complex_tidy <-
-  dag_epa_pick_complex %>%
-  tidy_dagitty() %>%
-  node_status()
-dag_epa_pick_complex_tidy
+plot_dag <- function(data, suffix) {
+  status_colors <-
+    c(
+      exposure = '#0074D9',
+      outcome = '#FF4136',
+      latent = 'grey50'
+    )
+  na_color <- 'grey20'
+  viz <-
+    data %>%
+    ggplot() +
+    aes(x = x, y = y, xend = xend, yend = yend) +
+    geom_dag_edges() +
+    geom_dag_point(aes(color = status)) +
+    geom_dag_label_repel(
+      aes(label = label, fill = status),
+      seed =  42,
+      color = 'white',
+      fontface = 'bold'
+    ) +
+    scale_color_manual(values = status_colors, na.value = na_color) +
+    scale_fill_manual(values = status_colors, na.value = na_color) +
+    guides(color = FALSE, fill = FALSE) +
+    theme_dag()
+  ggsave(viz, filename = file.path(sprintf('epa_pick_dag_%s_tracking.png', suffix)), type = 'cairo', width = 6, height = 6)
+  viz
+}
 
-status_colors <-
-  c(
-    exposure = '#0074D9',
-    outcome = '#FF4136',
-    latent = 'grey50'
-  )
-na_color <- 'grey20'
+viz_dag_epa_pick_wo_tracking <-
+  dag_epa_pick_tidy %>%
+  filter(name != 'player_tracking') %>%
+  plot_dag(suffix = 'wo')
 
-viz_epa_pick_complex <-
-  dag_epa_pick_complex_tidy %>%
+viz_dag_epa_pick_w_tracking <-
+  dag_epa_pick_tidy %>%
+  plot_dag(suffix = 'w')
+
+viz_dag_epa_pick <-
+  dag_epa_pick_tidy %>%
   # filter(name != 'player_tracking') %>%
-  ggplot() +
-  aes(x = x, y = y, xend = xend, yend = yend) +
-  geom_dag_edges() +
-  geom_dag_point(aes(color = status)) +
-  geom_dag_label_repel(
-    aes(label = label, fill = status),
-    seed =  42,
-    color = 'white',
-    fontface = 'bold'
-  ) +
-  scale_color_manual(values = status_colors, na.value = na_color) +
-  scale_fill_manual(values = status_colors, na.value = na_color) +
-  guides(color = FALSE, fill = FALSE) +
-  theme_dag()
-viz_epa_pick_complex
+viz_dag_epa_pick
 
+# Unused stuff.
+dag_epa_pick %>% ggdag::ggdag()
+dag_epa_pick %>% ggdag::ggdag_paths(text = FALSE, use_labels = 'label', shadow = TRUE)
+dag_epa_pick %>% ggdag::ggdag_adjustment_set(text = FALSE, use_labels = 'label', shadow = TRUE)
+dag_epa_pick %>% ggdag::dag_paths()
 
-
-
-dag_epa_pick_simple %>% ggdag::ggdag()
-dag_epa_pick_simple %>% ggdag::ggdag_paths(text = FALSE, use_labels = 'label', shadow = TRUE)
-dag_epa_pick_simple %>% ggdag::ggdag_adjustment_set(text = FALSE, use_labels = 'label', shadow = TRUE)
-dag_epa_pick_simple %>% ggdag::dag_paths()
-
-dag_epa_pick_simple %>%
+dag_epa_pick %>%
   dag_paths(paths_only = FALSE) %>%
   ggplot(aes(x = x, y = y, xend = xend, yend = yend, col = path, alpha = path)) +
   geom_dag_edges_link(
@@ -131,8 +122,8 @@ dag_epa_pick_simple %>%
   ) +
   theme(legend.position = 'none')
 
-dag_epa_pick_simple %>%
+dag_epa_pick %>%
   tidy_dagitty() %>%
   dag_paths()
-dag_epa_pick_simple %>%
+dag_epa_pick %>%
   ggdag_paths()

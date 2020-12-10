@@ -62,13 +62,13 @@ data('personnel_and_rushers', package = 'bdb2021')
 
 do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_features = TRUE, overwrite_min_dists = FALSE, overwrite_min_dists_target = TRUE, ...) {
 
-  path_min_dists <- file.path('inst', sprintf('min_dists_robust_week%d.parquet', week))
+  path_min_dists <- file.path(.get_dir_data(), sprintf('min_dists_robust_week%d.parquet', week))
   do_min_dists <- !file.exists(path_min_dists) | overwrite_min_dists
 
-  path_min_dists_target <- file.path('inst', sprintf('min_dists_naive_target_week%d.parquet', week))
+  path_min_dists_target <- file.path(.get_dir_data(), sprintf('min_dists_naive_target_week%d.parquet', week))
   do_min_dists_target <- !file.exists(path_min_dists_target) | overwrite_min_dists_target
 
-  path_features <- file.path('inst', sprintf('features_week%d.parquet', week))
+  path_features <- file.path(.get_dir_data(), sprintf('features_week%d.parquet', week))
   # browser()
   do_features <- !file.exists(path_features) | overwrite_features
   if(!do_features) {
@@ -138,6 +138,9 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
   at <- 'throw'
   tracking_clipped <- tracking %>% clip_tracking_at_events(at = at)
   tracking_at_events <- tracking %>% filter_notable_events()
+  
+  # pick_plays_wo_features %>% head(6) %>% distinct(play_id) -> play_ids
+  # tracking_at_events %>% inner_join(play_ids) %>% count(play_id)
 
   snap_frames <- tracking %>% dplyr::filter(.data$event == 'ball_snap')
 
@@ -312,7 +315,8 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
         d = purrr::pmap(list(.data$o, .data$d, .data$rushers), .fix_d)
       ) %>%
       dplyr::select(-data)
-
+    min_dists_nested_init
+    
     min_dists_nested_robust <-
       min_dists_nested_init %>%
       dplyr::mutate(
@@ -331,6 +335,7 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
         .data$event,
         .data$min_dists_robust
       )
+    min_dists_nested_robust
     beepr::beep(3)
 
     min_dists_robust <-
@@ -353,7 +358,7 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
         frames_target_idx_o,
         by = c('game_id', 'play_id')
       )
-
+    # min_dists_robust_temp
     min_dists_robust %>% arrow::write_parquet(path_min_dists)
 
     # min_dists_robust %>%
@@ -562,6 +567,7 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
       dist_qb_ball = .dist(.data$qb_x, .data$ball_x, .data$qb_y, .data$ball_y),
       dist_los = .data$x -  .data$los
     )
+  features
 
   if(overwrite_features) {
     .display_info('Saving features for week {week} at {Sys.time()}.')
@@ -572,29 +578,30 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
 
 # weeks <- 1:17L
 weeks <- 1:17L
-features <- weeks %>% do_by_week(do_generate_features, overwrite_features = TRUE, overwrite_min_dists_target = TRUE)
+features <- weeks %>% do_by_week(do_generate_features, overwrite_features = TRUE, overwrite_min_dists = TRUE, overwrite_min_dists_target = TRUE)
 features
-features %>% count(week, game_id, play_id, frame_id, event, sort = TRUE)
-
-min_dists_naive_target <-
-  weeks %>%
-  sprintf('min_dists_naive_target_week%d.parquet', .) %>%
-  file.path('inst', .) %>%
-  map_dfr(arrow::read_parquet)
-min_dists_naive_target
-arrow::write_parquet(min_dists_naive_target, file.path('inst', 'min_dists_naive_target.parquet'))
-
+features %>% filter(is.na(nfl_id_d_robust))
 
 features_n <-
   features %>%
   count(week, game_id, play_id, frame_id, event, sec)
-bad_feature_ids <- features_n %>% filter(n != 5L) %>% distinct(game_id, play_id)
+features_n %>% filter(n != 5L) %>% count(n, name = 'nn')
+features_n %>% filter(n > 6L)
+bad_feature_ids <- features_n %>% filter(n > 6L) %>% distinct(game_id, play_id)
 bad_feature_ids
 
-features <-
+new_features <-
   features %>%
   anti_join(bad_feature_ids)
-features
+new_features
+arrow::write_parquet(features, file.path(.get_dir_data(), 'new_features.parquet'))
 
-arrow::write_parquet(features, file.path('inst', 'features.parquet'))
+
+min_dists_naive_target <-
+  weeks %>%
+  sprintf('min_dists_naive_target_week%d.parquet', .) %>%
+  file.path(.get_dir_data(), .) %>%
+  map_dfr(arrow::read_parquet)
+min_dists_naive_target
+arrow::write_parquet(min_dists_naive_target, file.path(.get_dir_data(), 'min_dists_naive_target.parquet'))
 beepr::beep(3)

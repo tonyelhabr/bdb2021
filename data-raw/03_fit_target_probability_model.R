@@ -1,9 +1,42 @@
 
 library(tidyverse)
-# TODO: Update this with pass_tipped!
+data('routes', package = 'bdb2021')
+features <- 
+  import_new_features() %>% 
+  mutate(
+    sec = case_when(
+      event %>% str_detect('sec$') ~ event %>% str_remove(' sec') %>% as.double(),
+      TRUE ~ NA_real_
+    )
+  ) %>% 
+  filter(sec <= 3 | event %in% events_end_rush)
+
+
+events_end_rush <- .get_events_end_rush()
+features_min_init <-
+  features %>%
+  # filter(event %in% c('0.0 sec', events_end_rush)) %>%
+  select(week, game_id, play_id, event, frame_id, sec, nfl_id, nfl_id_d_robust) %>%
+  # If there are multiple of these `events_end_rush` on the same play, then just pick the first
+  group_by(game_id, play_id, nfl_id, event) %>%
+  # filter(frame_id == min(frame_id)) %>%
+  filter(row_number() == 1L) %>%
+  ungroup()
+features_min_init
+
+features_min_end_drop <-
+  features_min_init %>% 
+  filter(event %in% events_end_rush) %>% 
+  group_by(game_id, play_id, nfl_id) %>% 
+  # slice_min(frame_id, with_ties = FALSE) %>% 
+  filter(row_number(frame_id) > 1L) %>% 
+  ungroup()
+features_min_end_drop
+
 features <-
-  file.path('inst', 'features.parquet') %>%
-  arrow::read_parquet()
+  features_min_init %>% 
+  anti_join(features_min_end_drop)
+features
 
 features_events <-
   features %>%
@@ -13,26 +46,12 @@ features_events <-
   group_by(game_id, play_id, event) %>%
   filter(frame_id == min(frame_id)) %>%
   ungroup()
-
-# features_idx_wide <-
-#   features_events %>%
-#   group_by(game_id, play_id) %>%
-#   mutate(idx = row_number(frame_id)) %>%
-#   ungroup() %>%
-#   select(-frame_id) %>%
-#   pivot_wider(names_from = event, values_from = idx)
-#
-# event_seqs_n <-
-#   features_idx_wide %>%
-#   group_by_at(vars(-c(game_id, play_id))) %>%
-#   count(sort = TRUE) %>%
-#   ungroup()
-# event_seqs_n
+features_events
 
 play_ids_to_drop <-
   features_events %>%
   filter(
-    event %in% c('pass_shovel', 'qb_spike', 'pass_tipped')
+    event %in% c('pass_shovel', 'qb_spike') # , 'pass_tipped')
   ) %>%
   distinct(game_id, play_id)
 play_ids_to_drop
@@ -40,6 +59,7 @@ play_ids_to_drop
 features <-
   features %>%
   anti_join(play_ids_to_drop)
+features %>% count(event)
 
 events_lag1 <-
   features %>%
@@ -49,20 +69,25 @@ events_lag1 <-
   mutate(event_lag1 = dplyr::lag(event)) %>%
   ungroup() %>%
   mutate(across(event_lag1, ~coalesce(.x, 'none')))
+events_lag1
+# events_lag1 %>% count(event, event_lag1) %>% filter(event %>% str_detect('3.0 sec$'))
 
 features <-
   features %>%
-  left_join(events_lag1)
+  left_join(events_lag1) %>% 
+  # Get rid of frames where another event is recorded after the end of the rush.
+  filter(!(event_lag1 %in% events_end_rush))
+features
 
 nms <- features %>% names()
 cols_ball <- nms %>% str_subset('^ball_')
 cols_qb <- nms %>% str_subset('^qb_')
 cols_od <- nms %>% str_subset('_[od]$|_[od]_')
-cols_od
-cols_od %>% setdiff(cols_qb)
-cols_qb %>% setdiff(cols_od)
+# cols_od %>% setdiff(cols_qb)
+# cols_qb %>% setdiff(cols_od)
 cols_rusher <- nms %>% str_subset('rusher') %>% str_subset('nfl_id', negate = TRUE)
 col_y <- 'idx_o_target'
+
 cols_id <-
   c(
     'week',
@@ -75,12 +100,14 @@ cols_static_value <-
   c(
     'qb_o', 'los', 'qb_x', 'qb_y' # , 'event', 'event_lag1'
   )
+
 cols_id_model <-
   c(
     'event',
     'event_lag1',
     'idx'
   )
+
 cols_static <-
   c(
     cols_id,
@@ -89,12 +116,14 @@ cols_static <-
     # 'yards_to_go',
     cols_static_value
   )
+
 cols_pivot_name <- 'idx_o'
 # nw: , 'x', 'y', 'dist_ball', 'dist_d_robust', 'dist_ball_d_robust', 'dist_qb', 'dist_qb_d_robust'
 cols_pivot_value <-
   c(
-    'x', 'y', 'dist_ball', 'dist_d_robust', 'dist_ball_d_robust', 'dist_d1_naive', 'o', 'o_d_robust' # , 's', 's_d_robust' # , 'a', 'a_d_robust', 'o', 'o_d_robust'
+    'x', 'y', 'dist_ball', 'dist_d1_naive', 'dist_ball_d1_naive', 'o', 'o_d1_naive' # , 's', 's_d_robust' # , 'a', 'a_d_robust', 'o', 'o_d_robust'
   )
+
 cols_keep <-
   c(
     col_y,
@@ -104,25 +133,75 @@ cols_keep <-
   )
 rgx_pivot_value <- sprintf('^(%s)_[1-5]$', paste(cols_pivot_value, collapse = '|', sep = ''))
 
-features_wide <-
+# features %>% filter(sec <= 3.5) %>% count(event)
+# Prep for data filtering.
+snap_frames <-
   features %>%
-  # head(100) %>%
-  filter(event %>% str_detect('sec$') | event == 'pass_forward') %>%
+  group_by(game_id, play_id) %>%
+  filter(frame_id == min(frame_id)) %>%
+  ungroup() %>%
+  select(game_id, play_id, frame_id_min = frame_id)
+snap_frames
+
+# More prep.
+minmax_frames <-
+  features %>%
+  left_join(snap_frames) %>%
+  mutate(frame_id_diff = frame_id - frame_id_min) %>%
+  # filter(event == 'pass_forward')
+  filter(frame_id_diff <= 30) %>%
+  group_by(game_id, play_id) %>%
+  summarize(
+    across(c(frame_id), list(min = min, max = max))
+  ) %>%
+  ungroup() %>%
+  mutate(frame_id_diff = frame_id_max - frame_id_min) %>%
+  left_join(features %>% distinct(game_id, play_id, frame_id_min = frame_id, event_min = event)) %>%
+  left_join(features %>% distinct(game_id, play_id, frame_id_max = frame_id, event_max = event)) %>% 
+  filter(event_max != '0.0 sec') %>% 
+  group_by(game_id, play_id) %>% 
+  filter(row_number(desc(event_max)) == 1L) %>% 
+  ungroup() %>% 
+  filter(sec <= 3 | event_max %in% events_end_rush)
+minmax_frames
+minmax_frames %>% filter(event_max == 'qb_sack') %>% arrange(-frame_id_diff)
+minmax_frames %>% count(event)
+# minmax_frames %>% filter(event_max == '1.5 sec')
+# new_features %>% filter(game_id == 2018092301, play_id == 4191) %>% count(event, frame_id)
+# plays <- import_plays()
+# plays %>% filter(game_id == 2018092301, play_id == 4191) %>% select(play_description)
+# 
+# new_features %>% filter(game_id == 2018102102, play_id == 3907) %>% count(event, frame_id)
+# new_features %>% filter(game_id == 2018100703, play_id == 1062)
+# new_features %>% filter(game_id == 2018100703, play_id == 1062) # %>% count(frame_id, event)
+# minmax_frames %>% filter(game_id == 2018092301, play_id == 949)
+# minmax_frames %>% count(event_max)
+
+features_wide <-
+  new_features %>%
+  semi_join(minmax_frames) %>% 
   # count(game_id, play_id, frame_id, nfl_id) %>%
   # distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE) %>%
   group_by(game_id, play_id, frame_id, nfl_id) %>%
   mutate(rn = row_number()) %>%
   filter(rn == max(rn)) %>%
   ungroup() %>%
-  select(-rn) %>%
+  select(-rn)
+features_wide
+
+features_wide <-
+  features_wide %>% 
   left_join(
     routes,
     by = c('week', 'game_id', 'play_id', 'nfl_id')
-  ) %>%
+  ) %>% 
+  filter(idx_o <= 5L) %>% 
   mutate(
     across(matches('^x_|_x'), ~los + .x),
-    across(c(cols_pivot_value), ~case_when(is.na(route) ~ 9999, TRUE ~ .x)),
-    across(idx_o_target, ~coalesce(.x, 9) %>% factor())
+    across(cols_pivot_value, ~if_else(is.na(route), 9999, .x)),
+    # across(where(is.double), ~if_else(is.na(.x), 9999,~ .x)),
+    across(idx_o_target, ~if_else(.x > 5L, NA_integer_, .x)),
+    across(idx_o_target, ~coalesce(.x, 9L) %>% factor())
   ) %>%
   # idx won't be in here
   select(any_of(cols_keep)) %>%
@@ -132,9 +211,17 @@ features_wide <-
     values_from = all_of(cols_pivot_value)
     # values_from = cols_features
   ) %>%
+  mutate(
+    across(where(is.double), ~if_else(is.na(.x), 9999, .x)),
+  ) %>% 
   mutate(idx = row_number()) %>%
   relocate(idx)
 features_wide
+
+features_wide <-
+  features_wide %>% 
+  left_join(events_lag1)
+# features_wide %>% select(matches('_[3-5]')) %>% skimr::skim()
 
 # features_wide %>% ggplot() + aes(x = x_rusher) + geom_histogram()
 features_wide_min <-
@@ -166,7 +253,7 @@ do_rf <- function(trn, tst,  min_n = 2, mtry = 42, trees = 500, suffix = 'w_s_o'
   .display_info('Fitting rf for `min_n = {min_n}`, `mtry = {mtry}`, `trees = {trees}` at {Sys.time()}.')
   path_suffix <- sprintf('%s-min_n=%d-mtry=%d-trees=%d', suffix, min_n, mtry, trees)
   .path <- function(prefix, ext) {
-    file.path('inst', sprintf('%s-%s.%s', prefix, path_suffix, ext))
+    file.path(.get_dir_data(), sprintf('%s-%s.%s', prefix, path_suffix, ext))
   }
 
   path_fit <- .path('fit', ext = 'rds')
@@ -283,10 +370,7 @@ if(!final) {
       all_of(cols_id),
       all_of(cols_id_model),
       new_role = 'extra'
-    ) # %>%
-    # recipes::step_dummy(
-    #   matches('event')
-    # )
+    )
   rec
 
   res_grid_rf <-
@@ -295,10 +379,11 @@ if(!final) {
       acc =
         map2(
           min_n, mtry,
-          ~do_rf_timed(trn = trn, tst = tst, min_n = ..1, mtry = ..2, suffix = 'nw_wo_qb_event_w_d1_s_o')
+          ~do_rf_timed(trn = trn, tst = tst, min_n = ..1, mtry = ..2, suffix = 'te_wo_robust')
         )
     )
   res_grid_rf
+  
 } else {
 
   set.seed(42)
@@ -324,7 +409,7 @@ if(!final) {
     ) %>%
     map_dfr(~arrow::read_parquet(.x))
   probs_folds
-  arrow::write_parquet(probs_folds, file.path('inst', 'probs-tp-final-folds.parquet'))
+  arrow::write_parquet(probs_folds, file.path(.get_dir_data(), 'probs-tp-final-folds.parquet'))
   # write_rds(fit, path_fit)
   #
   # probs <-

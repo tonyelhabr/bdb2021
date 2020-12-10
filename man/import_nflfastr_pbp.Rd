@@ -2,7 +2,7 @@
 % Please edit documentation in R/import.R
 \name{import_nflfastr_pbp}
 \alias{import_nflfastr_pbp}
-\title{Import \code{nflfastR} play-by-play data}
+\title{Import \code{{nflfastR}} play-by-play data}
 \usage{
 import_nflfastr_pbp(season = 2018)
 }
@@ -10,10 +10,13 @@ import_nflfastr_pbp(season = 2018)
 \item{season}{2018 by default.}
 }
 \description{
-Import \code{nflfastR} play-by-play data
+Import \code{{nflfastR}} play-by-play data
 }
 \examples{
 \dontrun{
 import_nflfastr_pbp()
 }
+}
+\seealso{
+\url{https://github.com/mrcaseb/nflfastR}
 }

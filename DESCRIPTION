@@ -1,24 +1,42 @@
 Package: bdb2021
-Title: R package for {{...}}.
+Title: R package for bdb.
 Version: 0.0.0.9000
 Authors@R: 
     person(given = "Tony",
            family = "ElHabr",
            role = c("aut", "cre"),
            email = "anthonyelhabr@gmail.com")
-Description: An R package for {{...}}.
+Description: An R package for bdb.
 License: MIT + file LICENSE
+Depends: 
+    R (>= 3.5)
+Imports: 
+    assertthat,
+    cli,
+    clue,
+    dplyr,
+    fields,
+    ggplot2,
+    glue,
+    lubridate,
+    magrittr,
+    purrr,
+    readr,
+    rlang (>= 0.1.2),
+    sf,
+    stringr,
+    tidyr,
+    usethis,
+    vroom,
+    ggtext,
+    memoise
+Suggests: 
+    knitr,
+    rmarkdown,
+    roxygen2
+VignetteBuilder: 
+    knitr
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.1
-Imports: 
-    magrittr,
-    rlang (>= 0.1.2)
-Suggests: 
-    roxygen2,
-    knitr,
-    rmarkdown
-VignetteBuilder: knitr
-Depends: 
-    R (>= 2.10)

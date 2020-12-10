@@ -1,4 +1,5 @@
 
+#' @export
 .get_events_throw <- memoise::memoise({function() {
   c(
     'pass_forward',
@@ -6,6 +7,7 @@
   )
 }})
 
+#' @export
 .get_events_end_routes <- memoise::memoise({function() {
   c(
     sprintf(
@@ -19,6 +21,7 @@
   )
 }})
 
+#' @export
 .get_events_end_rush <- memoise::memoise({function() {
   c(
     sprintf(
@@ -32,6 +35,7 @@
   )
 }})
 
+#' @export
 .get_events_recoder <- memoise::memoise({function() {
   events_throw <- .get_events_throw()
   events_end_routes <- .get_events_end_routes()
@@ -48,7 +52,7 @@
   )
 }})
 
-
+#' @export
 .get_notable_events <- memoise::memoise({function() {
   c(
     'ball_snap',
@@ -66,12 +70,13 @@
   )
 }})
 
+#' @export
 filter_notable_events <- function(data, events = .get_notable_events()) {
   data %>%
-    filter(.data$event %in% !!events)
+    dplyr::filter(.data$event %in% !!events)
 }
 
-
+#' @export
 relabel_events <- function(data) {
   events_recoder <- .get_events_recoder()
   data %>%

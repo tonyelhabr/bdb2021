@@ -9,9 +9,12 @@
   )
 }
 
-# Probably need to put this in some other file since it doesn't go perfectly with all these `read_*` functions.
-# When `group = 0`, it's pre-snap. When `group = 2`, it's `events`.
-# An alternate `init_cnd` might be `quos(frame_id == 1)`. (You don't technically need to use `quos()` if it's just one condition; just `quo()` would suffice.) A base R alternative to the `quos()`-`!!!` combo would be `expr()`-`eval()`.
+#' Clip tracking data at events
+#'
+#' @param tracking Tracking data frame
+#' @param at character vector indicating which `event` at which to clip each play
+#' @param init_cnd a quosure for a filtering condition used to start the clip. This is ball snap by default. Only change this if you know what you're doing.
+#' @export
 clip_tracking_at_events <-
   function(tracking,
            at = 'throw',

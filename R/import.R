@@ -1,22 +1,39 @@
 
-#' @description Get directory where file is stored, which is dependent on whether
-#' the code is run locally or on Kaggle.
-#' Best to change with \code{options(bdb2021.dir = <dir>)} so that other \code{import_}
-.get_dir <- function() {
-  getOption('bdb2021.dir')
+#' Get input directory
+#'
+#' Get directory where file is stored, which is dependent on whether the code is run locally or on Kaggle.
+#' Best to change with `options(bdb2021.dir_in = <dir>)` so that other `import_*()`
+.get_dir_in <- function() {
+  getOption('bdb2021.dir_in')
+}
+
+#' Get output directory
+#'
+#' Get folder where package intermediate data is saved
+.get_dir_data <- function() {
+  getOption('bdb2021.dir_data')
+}
+
+#' Get output directory
+#'
+#' Get folder where package intermediate data is saved
+.get_dir_figs <- function() {
+  getOption('bdb2021.dir_figs')
 }
 
 #' Import position categorization data
 #'
-#' @description Useful for \code{side} column (either \code{"O"} or \code{"D"})
+#' Useful for \code{side} column (either \code{"O"} or \code{"D"})
 #' functions have the same change.
+#' 
 #' @seealso \url{https://github.com/leesharpe/nfldata/blob/master/data/positions.csv}
 #' @examples
 #' \dontrun{
 #' import_positions()
 #' }
+#' @export
 import_positions <- memoise::memoise({function() {
-  path <- file.path(.get_dir(), 'positions.csv')
+  path <- file.path(.get_dir_in(), 'positions.csv')
   positions <-
     path %>%
     vroom::vroom(
@@ -32,14 +49,14 @@ import_positions <- memoise::memoise({function() {
 
 #' Import team colors data
 #'
-#' @inheritParams import_positions
 #' @seealso \url{https://github.com/leesharpe/nfldata/blob/master/data/teamcolors.csv}
 #' @examples
 #' \dontrun{
 #' import_colors()
 #' }
+#' @export
 import_colors <- memoise::memoise({function() {
-  path <- file.path(.get_dir(), 'teamcolors.csv')
+  path <- file.path(.get_dir_in(), 'teamcolors.csv')
   colors <-
     path %>%
     vroom::vroom(
@@ -61,15 +78,15 @@ import_colors <- memoise::memoise({function() {
 #' then \code{los} column is also added.
 #' @param week Number between 1 and 17
 #' @param positions Positions data for adding \code{side} column
-#' @param standardize Boolean. Whether to \code{x} and \code{y} based on line of scrimmage (\code{los}) and \code{play_direction}. Note that \code{los} column
+#' @param standardize Boolean. Whether to standardize `x` and \code{y} based on line of scrimmage (\code{los}) and \code{play_direction}. Note that \code{los} column
 #' is added if TRUE.
-#' @inheritParams import_positions
 #' @examples
 #' \dontrun{
 #' import_tracking(1)
 #' }
+#' @export
 import_tracking <- function(week = 1, positions = import_positions(), standardize = TRUE) {
-  path <- file.path(.get_dir(), sprintf('week%d.csv', week))
+  path <- file.path(.get_dir_in(), sprintf('week%d.csv', week))
   tracking <-
     path %>%
     vroom::vroom(
@@ -154,13 +171,13 @@ import_tracking <- function(week = 1, positions = import_positions(), standardiz
 
 #' Import games data
 #'
-#' @inheritParams import_positions
 #' @examples
 #' \dontrun{
 #' import_games()
 #' }
+#' @export
 import_games <- memoise::memoise({function() {
-  path <- file.path(.get_dir(), 'games.csv')
+  path <- file.path(.get_dir_in(), 'games.csv')
   games <-
     path %>%
     vroom::vroom(
@@ -181,14 +198,14 @@ import_games <- memoise::memoise({function() {
 
 #' Import players data
 #'
-#' @inheritParams import_positions
 #' @examples
 #' \dontrun{
 #' import_players()
 #' }
+#' @export
 import_players <- memoise::memoise({function() {
-  path <- file.path(.get_dir(), 'players.csv')
-  # TODO: dob needs some fixinig
+  path <- file.path(.get_dir_in(), 'players.csv')
+  # TODO: dob needs some fixing
   players <-
     path %>%
     vroom::vroom(
@@ -229,8 +246,9 @@ import_players <- memoise::memoise({function() {
 #' \dontrun{
 #' import_plays()
 #' }
+#' @export
 import_plays <- memoise::memoise({function(drop_bad = TRUE) {
-  path <- file.path(.get_dir(), 'plays.csv')
+  path <- file.path(.get_dir_in(), 'plays.csv')
   plays <-
     path %>%
     vroom::vroom(
@@ -256,7 +274,7 @@ import_plays <- memoise::memoise({function(drop_bad = TRUE) {
         is_defensive_pi = vroom::col_logical()
       )
     )
-  path <- file.path(.get_dir(), 'targetedReciever.csv')
+  path <- file.path(.get_dir_in(), 'targetedReciever.csv')
   target <-
     path %>%
     vroom::vroom(
@@ -315,14 +333,15 @@ import_plays <- memoise::memoise({function(drop_bad = TRUE) {
 
 }})
 
-#' Import \code{nflfastR} play-by-play data
+#' Import `{nflfastR}` play-by-play data
 #'
 #' @param season 2018 by default.
-#'
+#' @seealso \url{https://github.com/mrcaseb/nflfastR}
 #' @examples
 #' \dontrun{
 #' import_nflfastr_pbp()
 #' }
+#' @export
 import_nflfastr_pbp <- memoise::memoise({function(season = 2018) {
   sprintf('https://raw.githubusercontent.com/guga31bb/nflfastR-data/master/data/play_by_play_%s.rds', season) %>%
     url() %>%
@@ -331,3 +350,24 @@ import_nflfastr_pbp <- memoise::memoise({function(season = 2018) {
     dplyr::rename(game_id = .data$old_game_id) %>%
     dplyr::mutate(dplyr::across(c(.data$game_id, .data$play_id), as.integer))
 }})
+
+#' Import package-generated half-second features
+#' 
+#' @export
+import_features <- function() {
+  file.path(.get_dir_data(), 'features.parquet') %>% 
+  arrow::read_parquet()
+}
+
+#' Import package-generated half-second features
+#' 
+#' The `new_` part is to indicate that this set of features was created with
+#' re-laxed criteria for plays. Specifically, more or less than five receivers
+#' are allowed for play. (Previously, plays with more or less receivers
+#' were thrown out.)
+#' 
+#' @export
+import_new_features <- function() {
+  file.path(.get_dir_data(), 'new_features.parquet') %>% 
+    arrow::read_parquet()
+}

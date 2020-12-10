@@ -1,10 +1,9 @@
 
-# library(tidyverse)
 .get_verbose <- function() {
   getOption('bdb2021.verbose')
 }
 
-# Reference: https://glue.tidyverse.org/articles/transformers.html
+#' @seealso \url{https://glue.tidyverse.org/articles/transformers.html}
 .vv_transformer <- function(text, envir) {
   regex <- '=$'
   if (!grepl(regex, text)) {

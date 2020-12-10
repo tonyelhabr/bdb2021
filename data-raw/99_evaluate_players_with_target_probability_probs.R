@@ -4,12 +4,12 @@ library(tidyverse)
 data('players_from_tracking', package = 'bdb2021')
 
 features <-
-  file.path('inst', 'features.parquet') %>%
+  file.path(.get_dir_data(), 'features.parquet') %>%
   arrow::read_parquet()
 features
 
 min_dists <-
-  file.path('inst', 'min_dists_naive_target.parquet') %>%
+  file.path(.get_dir_data(), 'min_dists_naive_target.parquet') %>%
   arrow::read_parquet() %>%
   select(game_id, play_id, frame_id, event, idx_o, nfl_id, nfl_id_d, dist_d) %>%
   group_by(game_id, play_id, frame_id, event, idx_o, nfl_id) %>%
@@ -36,7 +36,7 @@ min_dists %>% arrange(wt)
 # The `+ 0.25` is to identify when passes occur between the half second frames.
 # (For example, a pass that occurs between frames 26 and 30 (`sec=2.5` and `sec=3.0`) after the snap will get a `sec=2.75`.
 probs <-
-  file.path('inst', 'probs-tp-final-folds.parquet') %>%
+  file.path(.get_dir_data(), 'probs-tp-final-folds.parquet') %>%
   arrow::read_parquet() %>%
   filter(.set == 'tst') %>%
   select(-c(.set, .pred_class, idx, week)) %>%

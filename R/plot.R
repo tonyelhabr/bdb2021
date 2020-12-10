@@ -1,4 +1,17 @@
 
+#' @export
+save_plot <-
+  function(gg,
+           file = deparse(substitute(gg)),
+           ext = 'png',
+           dir = .get_dir_figs(),
+           path = file.path(dir, sprintf('%s.%s', file, ext)),
+           height = 8,
+           width = height,
+           ...) {
+    ggplot2::ggsave(plot = gg, filename = path, width = width, height = height, type = 'cairo', ...)
+  }
+
 #' Plot a play
 #'
 #' @description Plot a play
@@ -123,12 +136,12 @@ plot_play <-
 
       if(is.null(yardmin)) {
         yardmin <- yardminmax$x_min
-        yardmin <- round_any(yardmin, 10, floor)
+        yardmin <- .round_any(yardmin, 10, floor)
       }
 
       if(is.null(yardmax)) {
         yardmax <- yardminmax$x_max
-        yardmax <- round_any(yardmax, 10, ceiling)
+        yardmax <- .round_any(yardmax, 10, ceiling)
       }
     }
 
@@ -138,9 +151,9 @@ plot_play <-
         tracking %>%
         dplyr::summarize(dplyr::across(y, list(min = min, max = max)))
       ymin <- yminmax$y_min
-      ymin <- round_any(ymin, 1, floor)
+      ymin <- .round_any(ymin, 1, floor)
       ymax <- yminmax$y_max
-      ymax <- round_any(ymax, 1, ceiling)
+      ymax <- .round_any(ymax, 1, ceiling)
       ymin_bound <- 0 - ymin
       ymax_bound <- ymax - max_y
       buffer <- max(0, ymin_bound, ymax_bound)
@@ -174,13 +187,6 @@ plot_play <-
         away_color <- offense_color
       }
     }
-
-    # events <- c('ball_snap', event_end)
-    # event_end_lab <- switch(at, 'throw' = 'Throw', 'end_routes' = 'End of Routes')
-    # switch_event_lab <- function(x) {
-    #   ifelse(x == 'ball_snap', 'Snap', event_end_lab)
-    # }
-    # browser()
     p <-
       frames %>%
       ggplot2::ggplot() +
@@ -190,15 +196,9 @@ plot_play <-
         buffer = buffer,
         field_color = field_color,
         line_color = line_color,
-        sideline_color = sideline_color # ,
-        # ...
+        sideline_color = sideline_color,
+        ...
       ) +
-      # ggplot2::facet_wrap(
-      #   ~event,
-      #   nrow = 2L,
-      #   strip.position = 'left',
-      #   labeller = ggplot2::labeller(event = switch_event_lab)
-      # ) +
       ggplot2::aes(x = x, y = y, group = nfl_id) +
       ggplot2::geom_segment(
         data = tibble::tibble(x = !!line_of_scrimmage),
@@ -242,35 +242,6 @@ plot_play <-
 
     p <-
       p +
-      # ggplot2::geom_text(
-      #   ggplot2::aes(label = '\u25A0', color = side, angle = o),
-      #   # size = 8,
-      #   size = pts(32),
-      #   show.legend = FALSE
-      # ) +
-      # ggplot2::geom_text(
-      #   ggplot2::aes(label = '\u2039', color = side, angle = o + 90),
-      #   # size = 8,
-      #   size = pts(32),
-      #   vjust = 0.3,
-      #   hjust = 2,
-      #   show.legend = FALSE
-      # ) +
-      # ggplot2::geom_text(
-      #   ggplot2::aes(label = jersey_number, angle = o),
-      #   color = 'white',
-      #   # size = 3,
-      #   size = pts(12),
-      #   vjust = 1,
-      # ) +
-      # ggplot2::geom_text(
-      #   data = snap_frames,
-      #   ggplot2::aes(label = sprintf('(%s)', nfl_id), color = side),
-      #   hjust = 1.5 * sign,
-      #   show.legend = FALSE,
-      #   fontface = 'bold',
-      #   size = pts(10)
-      # ) +
       ggplot2::geom_text(
         data = snap_frames,
         ggplot2::aes(label = jersey_number, color = side),
