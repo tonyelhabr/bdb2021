@@ -40,7 +40,7 @@ plot_play <-
            buffer = NULL,
            at = 'end_routes',
            save = TRUE,
-           dir = 'inst',
+           dir = .get_dir_figs(),
            filename = sprintf('%s-%s.png', game_id, play_id),
            path = file.path(dir, filename),
            width = 10,
@@ -74,12 +74,7 @@ plot_play <-
     play <- plays %>% dplyr::inner_join(meta, by = c('game_id', 'play_id'))
     assertthat::assert_that(nrow(play) == 1L)
 
-    # Would have already checked for this if `!has_week`.
-    # if(has_week) {
-    #   game <- games %>% filter(game_id == !! game_id) # dplyr::inner_join(meta, by = 'game_id')
-    #   assertthat::assert_that(nrow(game) == 1L)
-    # }
-    game <- games %>% dplyr::filter(game_id == !!game_id) # dplyr::inner_join(meta, by = 'game_id')
+    game <- games %>% dplyr::filter(game_id == !!game_id)
     assertthat::assert_that(nrow(game) == 1L)
 
     target_id <- play$target_nfl_id
@@ -87,7 +82,6 @@ plot_play <-
 
     if(!has_target) {
       warning('No target receiver.', call. = FALSE)
-      # return(ggplot())
       target <- tibble::tibble(display_name = '?', jersey_number = -1)
     } else {
       target <-
@@ -104,7 +98,7 @@ plot_play <-
 
     snap_frames <- tracking_clipped %>% dplyr::filter(frame_id == min(frame_id))
     notable_frames <- tracking_clipped %>% filter_notable_events()
-    end_frames <- tracking_clipped %>% dplyr::filter(frame_id == max(frame_id)) # %>% dplyr::mutate(event = !!event_end)
+    end_frames <- tracking_clipped %>% dplyr::filter(frame_id == max(frame_id))
     frames <- dplyr::bind_rows(snap_frames, end_frames)
 
     line_of_scrimmage <- play$absolute_yardline_number
@@ -114,24 +108,20 @@ plot_play <-
 
     target_tracking_clipped <-
       tracking_clipped %>%
-      dplyr::filter(nfl_id == !!target_id) # %>%
-      # dplyr::mutate(event = !!event_end)
+      dplyr::filter(nfl_id == !!target_id)
 
     nontarget_tracking_clipped <-
       tracking_clipped %>%
-      dplyr::filter(nfl_id != !!target_id) # %>%
-      # dplyr::mutate(event = !!event_end)
+      dplyr::filter(nfl_id != !!target_id)
 
     ball <-
-      # list(snap_frames, throw_frames) %>%
-      # purrr::reduce(dplyr::bind_rows) %>%
       notable_frames %>%
       dplyr::distinct(game_id, play_id, frame_id, x = ball_x, y = ball_y) %>%
       dplyr::mutate(nfl_id = NA_integer_)
 
     if(is.null(yardmin) | is.null(yardmax)) {
       yardminmax <-
-        tracking %>%
+        tracking_clipped %>%
         dplyr::summarize(dplyr::across(x, list(min = min, max = max)))
 
       if(is.null(yardmin)) {
@@ -148,7 +138,7 @@ plot_play <-
     max_y <- 160 / 3
     if(is.null(buffer)) {
       yminmax <-
-        tracking %>%
+        tracking_clipped %>%
         dplyr::summarize(dplyr::across(y, list(min = min, max = max)))
       ymin <- yminmax$y_min
       ymin <- .round_any(ymin, 1, floor)

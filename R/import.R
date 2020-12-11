@@ -367,7 +367,42 @@ import_features <- function() {
 #' were thrown out.)
 #' 
 #' @export
-import_new_features <- function() {
+import_new_features <- memoise::memoise({function() {
   file.path(.get_dir_data(), 'new_features.parquet') %>% 
     arrow::read_parquet()
+}})
+
+#' Import package-generated raw half-second target probabilities
+#' 
+#' @export
+import_raw_target_probs <- function() {
+  file.path(.get_dir_data(), 'probs-tp-final-folds.parquet') %>%
+    arrow::read_parquet() 
 }
+
+
+#' Import package-generated half-second min distances to target receiver
+#' 
+#' @export
+import_min_dists_naive_target <- function() {
+  file.path(.get_dir_data(), 'min_dists_naive_target.parquet') %>%
+    arrow::read_parquet() 
+}
+
+
+#' Import package-generated clean half-second target probabilities
+#' 
+#' @export
+import_clean_target_probs <- function() {
+  file.path(.get_dir_data(), 'target_probs_clean.parquet') %>%
+    arrow::read_parquet() 
+}
+
+#' Import package-generated clean target probability model
+#' 
+#' @export
+import_target_prob_model <- memoise::memoise({function() {
+  file.path(.get_dir_data(), 'fit-tp-final.rds') %>% 
+    readr::read_rds()
+}})
+

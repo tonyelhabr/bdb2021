@@ -67,8 +67,6 @@ pick_play_meta_init <-
   select(-week)
 pick_play_meta_init
 
-pick_play_meta_init %>% 
-  left_join
 
 plays_w_pick_info <-
   plays %>%
@@ -249,6 +247,7 @@ wf_pick_play_prob_model <-
 fit_pick_play_prob <-
   parsnip::fit(wf_pick_play_prob_model, plays_w_pick_info)
 fit_pick_play_prob <- glm(fmla, data = plays_w_pick_info, family = stats::binomial)
+
 pick_plays_probs <-
   fit_pick_play_prob %>% 
   broom::augment()
@@ -368,38 +367,187 @@ features_lag <-
   ungroup() %>%
   inner_join(
     plays %>%
-      select(game_id, play_id, pass_result, epa)
+      select(game_id, play_id, pass_result, epa, nfl_id_target = target_nfl_id)
   ) %>%
   left_join(
     pbp %>%
-      select(game_id, play_id, wpa_nflfastr = wpa, epa_nflfastr = epa)
+      select(game_id, play_id, epa, wpa_nflfastr = wpa, epa_nflfastr = epa)
   ) %>% 
   distinct()
 features_lag
 
-# Taking the one-non-snap frame of each play
-features_w_pick_info <- features_lag %>% filter(sec > 0)
+# Taking the one non-snap frame of each play
+pick_features <-
+  features_lag %>% 
+  filter(sec > 0) %>% 
+  # `had_intersect` is redundant with `has_intersect` if there is only one frame per play and it's the last frame.
+  select(-had_intersect)
 
-# # TODO: Need whether targeted or not
-# features_w_pick_info %>% 
-#   filter(had_intersect, is_lo) %>% 
-#   group_by(has_same_init_defender, pass_result, is_lo) %>% 
-#   summarize(
-#     n = n(),
-#     across(c(epa, wpa_nflfastr, epa_nflfastr), mean, na.rm = TRUE)
-#   ) %>% 
-#   ungroup() %>% 
-#   group_by(has_same_init_defender, is_lo) %>% 
-#   mutate(
-#     frac = n / sum(n)
-#   ) %>% 
-#   ungroup()
+pick_features_target_long <-
+  pick_features %>% 
+  filter(nfl_id_target == nfl_id) %>% 
+  select(has_same_init_defender, has_intersect, matches('^[ew]pa')) %>% 
+  pivot_longer(
+    matches('^[ew]pa'),
+    names_to = 'stat',
+    values_to = 'value'
+  ) %>% 
+  group_nest(has_same_init_defender, has_intersect, stat) %>% 
+  mutate(
+    across(has_intersect, ~if_else(.x, 'has_intersect', 'not_has_intersect')),
+    across(has_same_init_defender, ~if_else(.x, 'has_same_init_defender', 'not_has_same_init_defender'))
+  )
+pick_features_target_long
 
+do_t_test <- function(col1, col2 = sprintf('not_%s', col1)) {
+  col1_sym <- col1 %>% sym()
+  col2_sym <- col2 %>% sym()
+  pick_features_target_long %>% 
+    pivot_wider(
+      names_from = !!col1_sym,
+      values_from = data
+    ) %>% 
+    mutate(
+      t_test = map2(!!col1_sym, !!col2_sym, ~t.test(..1$value, ..2$value) %>% broom::tidy()),
+      !!col1_sym := map_int(!!col1_sym, nrow),
+      !!col2_sym := map_int(!!col2_sym, nrow)
+    ) %>% 
+    unnest(cols = c(t_test))
+}
+pick_init_defender_t_test <- do_t_test('has_same_init_defender')
+pick_init_defender_t_test
+pick_intersect_t_test <- do_t_test('has_intersect')
+pick_intersect_t_test
+
+pick_features_target_long %>%
+  filter(has_same_init_defender == 'not_has_same_init_defender') %>%
+  filter(stat == 'epa') %>%
+  unnest(data) %>%
+  sample_frac(0.2) %>% 
+  select(has_intersect, value) %>%
+  # mutate(across(has_intersect, factor)) %>%
+  ggstatsplot:::ggbetweenstats(
+    plot.type = 'box',
+    x = has_intersect,
+    y = value
+  )
+
+# TODO: Come up with a better name for this.
+pick_play_t_test_trunc <-
+  pick_features_target_long %>% 
+  # filter(has_same_init_defender == 'not_has_same_init_defender') %>% 
+  # filter(stat == 'epa') %>% 
+  unnest(data) # %>% 
+  # mutate(
+  #   across(
+  #     value,
+  #     ~case_when(
+  #       str_detect(stat, 'epa') & .x < -2 ~ -2,
+  #       str_detect(stat, 'epa') & .x > 2 ~ 2,
+  #       stat == 'wpa_nflfastr' & .x < -0.1 ~ -0.1,
+  #       stat == 'wpa_nflfastr' & .x > 0.1 ~ 0.1,
+  #       TRUE ~ .x
+  #     )
+  #   )
+  # )
+pick_play_t_test_trunc
+
+pick_play_t_test_trunc %>% 
+  sample_frac(0.2) %>% 
+  ggplot() +
+  aes(y = has_intersect, x = value) +
+  geom_boxplot(
+    aes(color = has_intersect),
+    alpha = 0.2
+  ) +
+  facet_wrap(stat ~ has_same_init_defender, scales = 'free', ncol = 2, nrow = 3)
+
+set.seed(42)
+viz_t_test <-
+  pick_play_t_test_trunc %>% 
+  sample_frac(0.2) %>% 
+  ggplot() +
+  aes(y = has_intersect, x = value) +
+  ggbeeswarm::geom_quasirandom(
+    aes(color = has_intersect),
+    groupOnX = FALSE,
+    alpha = 0.2
+  ) +
+  facet_wrap(stat ~ has_same_init_defender, scales = 'free', ncol = 2, nrow = 3) +
+  scale_color_manual(
+    values = c(has_intersect = 'red', not_has_intersect = 'blue'),
+    labels = c(has_intersect = 'Is Pick', not_has_intersect = 'Not A Pick')
+  ) +
+  guides(color = guide_legend('')) +
+  theme(
+    legend.position = 'top',
+    axis.text.y = element_blank()
+  ) +
+  labs(
+    x = NULL, y = NULL
+  )
+viz_t_test
+do_save_plot(viz_t_test)
+
+ggridges::geom_density_ridges(
+    # aes(), 
+    # stat = 'binline',
+    # binwidth = 1,
+    scale = 0.9, 
+    show.legend = FALSE
+  )
 
 # example viz data ----
 # jersey_numbers <-
 #   players_from_tracking %>%
 #   distinct(game_id, nfl_id, display_name, position, jersey_number)
+pick_play_meta_init
+pick_features
+
+# TODO: Thinking that I need something like pick_plays, but accounting for all receivers in order to actually compare pick plays man defense vs. non-pick plays man defense instead of just pick play man defense vs. zone defense. This is somewhat accomplished by `pick_features`, but not completely
+# pick_features already has all columns in pick_play_init
+all_plays <-
+  pick_features %>% 
+  select(-had_intersect)
+  left_join(
+    players_from_tracking,
+    by = c('game_id', 'play_id', 'nfl_id')
+  ) %>%
+  left_join(
+    players_from_tracking %>%
+      rename_with(~sprintf('%s_intersect', .x), c(nfl_id, display_name, jersey_number, position)),
+    by = c('game_id', 'play_id', 'nfl_id_intersect')
+  ) %>%
+  left_join(
+    players_from_tracking %>%
+      rename_with(~sprintf('%s_target', .x), c(nfl_id, display_name, jersey_number, position)),
+    by = c('game_id', 'play_id', 'nfl_id_target')
+  ) %>%
+  mutate(
+    across(c(nfl_id_target, jersey_number), ~coalesce(.x, -1L)),
+    across(c(display_name, position), ~coalesce(.x, '?'))
+  ) %>%
+  left_join(
+    routes,
+    by = c('game_id', 'play_id', 'nfl_id')
+  ) %>%
+  left_join(
+    routes %>%
+      rename_with(~sprintf('%s_intersect', .x), c(nfl_id, route)),
+    by = c('game_id', 'play_id', 'nfl_id_intersect')
+  ) %>%
+  left_join(
+    players_from_tracking %>% 
+      rename_with(~sprintf('%s_d_robust', .x), c(nfl_id, display_name, jersey_number, position)),
+    by = c('game_id', 'play_id', 'nfl_id_d_robust')
+  ) %>%
+  left_join(
+    players_from_tracking %>% 
+      rename_with(~sprintf('%s_d_robust_init', .x), c(nfl_id, display_name, jersey_number, position)),
+    by = c('game_id', 'play_id', 'nfl_id_d_robust_init')
+  )
+all_plays
+all_lays
 
 pick_plays <-
   pick_play_meta_init %>%
@@ -449,7 +597,7 @@ pick_plays <-
   ) %>%
   # There are 2 plays that don't match up. Just drop them with the inner_join
   inner_join(
-    features_w_pick_info %>%
+    pick_features %>%
       select(
         game_id,
         play_id,
@@ -539,14 +687,10 @@ viz_picks_by_receiver_target <-
   pick_plays_by_receiver_target %>%
   plot_picks_by_receiver() +
   labs(
-    title = '# of Targets When Involved In Pick Route Combination'
+    title = '# of targets When Involved In Pick Route Combination'
   )
 viz_picks_by_receiver_target
 do_save_plot(viz_picks_by_receiver_target)
-
-pick_plays %>% 
-  count(nfl_id_d)
-
 
 Matching::Match(
   Y = plays_w_pick_info$epa,
@@ -607,7 +751,7 @@ pick_play_meta_viz <-
   inner_join(plays %>% select(game_id, play_id, yards_gained = play_result)) %>% 
   mutate(
     lab = glue::glue('Pick between {display_name} ({jersey_number}, {position}) and {display_name_intersect} ({jersey_number_intersect}, {position_intersect}) between {sec-0.5} and {sec} seconds.
-                     Target: {display_name_target} ({jersey_number_target}, {position_target}). Play result: {pass_result}. Yards gained: {yards_gained}.
+                     target: {display_name_target} ({jersey_number_target}, {position_target}). Play result: {pass_result}. Yards gained: {yards_gained}.
                      BDB EPA: {scales::number(epa, accuracy = 0.01)}, nflfastR EPA: {scales::number(epa_nflfastr, accuracy = 0.01)}, nflfastR WPA: {scales::number(wpa_nflfastr, accuracy = 0.01)}'),
     path = file.path(
       .get_dir_data(), 
@@ -653,7 +797,7 @@ res_viz <-
 
 # pick_play_agg <-
 #   pick_plays %>%
-#   # Drop the plays where the targeted receiver is NA.
+#   # Drop the plays where the target receiver is NA.
 #   # drop_na() %>%
 #   # filter(!is.na(target_is_intersect)) %>%
 #   mutate(across(pass_result, ~if_else(.x != 'C', 'I', .x))) %>%

@@ -1,16 +1,13 @@
 
 library(tidyverse)
-# jersey_numbers
+library(bdb2021)
 data('players_from_tracking', package = 'bdb2021')
 
-features <-
-  file.path(.get_dir_data(), 'features.parquet') %>%
-  arrow::read_parquet()
+features <- import_features()
 features
 
 min_dists <-
-  file.path(.get_dir_data(), 'min_dists_naive_target.parquet') %>%
-  arrow::read_parquet() %>%
+  import_min_dists_naive_target() %>%
   select(game_id, play_id, frame_id, event, idx_o, nfl_id, nfl_id_d, dist_d) %>%
   group_by(game_id, play_id, frame_id, event, idx_o, nfl_id) %>%
   # Inverse distance weighting. Using the squared power is sort of an arbitrary choice. One could use whatever power seems reasonable.
@@ -29,15 +26,12 @@ min_dists <-
 min_dists
 # min_dists %>% filter(game_id == 2018090600, play_id == 75, frame_id1, nfl_id_d == 79848) %>% mutate(across(wt_d, list(total = sum)))
 # min_dists %>% filter(game_id == 2018090600, play_id == 75, frame_id1, nfl_id == 2495454) %>% mutate(across(wt_o, list(total = sum)))
-#
-min_dists %>% arrange(wt)
 # min_dists %>% ggplot() + aes(x = wt) + geom_histogram(binwidth = 0.01)
 # Will get some warnings on creating the seconds column.
 # The `+ 0.25` is to identify when passes occur between the half second frames.
 # (For example, a pass that occurs between frames 26 and 30 (`sec=2.5` and `sec=3.0`) after the snap will get a `sec=2.75`.
 probs <-
-  file.path(.get_dir_data(), 'probs-tp-final-folds.parquet') %>%
-  arrow::read_parquet() %>%
+  import_raw_target_probs() %>%
   filter(.set == 'tst') %>%
   select(-c(.set, .pred_class, idx, week)) %>%
   mutate(
@@ -72,6 +66,7 @@ minmax_frames <-
   mutate(frame_id_diff = frame_id_max - frame_id_min) %>%
   inner_join(probs %>% distinct(game_id, play_id, frame_id_min = frame_id, event_min = event)) %>%
   inner_join(probs %>% distinct(game_id, play_id, frame_id_max = frame_id, event_max = event))
+minmax_frames
 
 # If the pass is after 3 seconds after the snap, then take the 3 second frame.
 minmax_frames_long <-
@@ -90,15 +85,11 @@ minmax_frames_long <-
     across(matches('_stat$'), ~str_replace(.x, '(^.*_)(min|max)', '\\2'))
   ) %>%
   filter(frame_id_stat == event_stat)
+minmax_frames_long
 
 probs_long <-
   probs %>%
-  # Old way
-  # filter((event == '0.0 sec' & event_lag1 == 'none') | (event %in% c('pass_forward', 'pass_shovel') & event_lag1 %>% str_detect('sec$'))) %>%
-  # group(game_id, play_id) %>%
-  # filter(n() == 2L) %>%
-  # ungroup()
-  # New way
+  # # New way
   # inner_join(
   #   minmax_frames_long %>% select(game_id, play_id, frame_id)
   # ) %>%
@@ -132,26 +123,12 @@ diffs <-
   )
 diffs
 
-diffs_ex <-
+diffs_wide_init <-
   diffs %>%
-  filter(game_id == first(game_id), play_id <= 300) %>%
-  select(-idx_o_target, -idx_o_target_pred)
-write_csv(diffs_ex, 'inst/example_target_probs.csv')
-
-# diffs_n <-
-#   diffs %>%
-#   count(game_id, play_id, frame_id, idx_o_target_pred, nfl_id_d_robust)
-# diffs_n %>% count(n)
-
-diffs_ex <-
-  diffs %>%
-  filter(game_id == first(game_id), play_id <= 300) %>%
-  # arrange(game_id, play_id, frame_id) %>%
-  # filter(game_id == first(game_id), play_id == first(play_id)) %>%  # , idx_o_target_pred == 5) %>%
-  # select(game_id, play_id, frame_id, event, idx_o_target, idx_o_target_pred, nfl_id_target, nfl_id_target_pred) %>%
-  # head(5) %>%
-  # left_join(min_dists %>% filter(nfl_id_d == 79848)) %>%
-  left_join(min_dists %>% rename(nfl_id_target_pred = nfl_id)) %>%
+  left_join(
+    min_dists %>% 
+      rename(nfl_id_target_pred = nfl_id, idx_o_target_pred = idx_o)
+  ) %>%
   # arrange(game_id, play_id, frame_id, idx_o_target_pred, nfl_id_d) %>%
   mutate(
     is_target = if_else(idx_o_target_pred == idx_o_target, TRUE, FALSE)
@@ -160,70 +137,26 @@ diffs_ex <-
     game_id,
     play_id,
     frame_id,
-    sec,
-    event,
-    event_lag1,
-    # idx_o,
-    # idx_o_target,
-    # idx_o_target_pred, # Same as idx_o
-    nfl_id_o = nfl_id_target_pred,
-    nfl_id_target,
-    is_target,
-    nfl_id_d,
-    prob,
-    dist_d,
-    wt_d
-  ) %>%
-  left_join(
-    players_from_tracking %>%
-      select(-week) %>%
-      rename_with(~sprintf('%s_o', .x), c(nfl_id, position, display_name, jersey_number))
-  ) %>%
-  left_join(
-    positions %>%
-      select(position, position_label) %>%
-      rename_with(~sprintf('%s_o', .x), c(position, position_label))
-  ) %>%
-  left_join(
-    players_from_tracking %>%
-      select(-week) %>%
-      rename_with(~sprintf('%s_d', .x), c(nfl_id, position, display_name, jersey_number))
-  ) %>%
-  left_join(
-    positions %>%
-      select(position, position_label) %>%
-      rename_with(~sprintf('%s_d', .x), c(position, position_label))
-  )
-diffs_ex
-write_csv(diffs_ex, 'inst/example_target_probs.csv')
-
-diffs_wide <-
-  diffs %>%
-  filter(game_id == first(game_id), play_id <= 300) %>%
-  # arrange(game_id, play_id, frame_id) %>%
-  # filter(game_id == first(game_id), play_id == first(play_id)) %>%  # , idx_o_target_pred == 5) %>%
-  # select(game_id, play_id, frame_id, event, idx_o_target, idx_o_target_pred, nfl_id_target, nfl_id_target_pred) %>%
-  # head(5) %>%
-  # left_join(min_dists %>% filter(nfl_id_d == 79848)) %>%
-  left_join(min_dists %>% rename(nfl_id_target_pred = nfl_id)) %>%
-  # arrange(game_id, play_id, frame_id, idx_o_target_pred, nfl_id_d) %>%
-  mutate(
-    is_target = if_else(idx_o_target_pred == idx_o_target, TRUE, FALSE)
-  ) %>%
-  select(
-    game_id,
-    play_id,
-    frame_id,
-    # idx_o,
     idx_o_target,
-    idx_o_target_pred, # Same as idx_o
+    idx_o_target_pred,
     nfl_id_target_pred,
     nfl_id_d,
     event,
     prob,
     wt_o,
     wt_d
-  ) %>%
+  )
+diffs_wide_init
+
+diffs_wide_init %>% 
+  select(game_id, play_id, frame_id, nfl_id = nfl_id_target_pred, nfl_id_d, prob, wt_o, wt_d) %>% 
+  arrow::write_parquet(file.path(.get_dir_data(), 'target_probs_clean.parquet'))
+
+diffs_wide <-
+  diffs_wide_init %>% 
+  inner_join(
+    minmax_frames_long %>% select(game_id, play_id, frame_id)
+  ) %>% 
   mutate(
     across(
       event,
@@ -232,11 +165,11 @@ diffs_wide <-
         TRUE ~ 'end'
       )
     )
-  ) %>%
+  ) %>% 
   pivot_wider(
     names_from = event,
-    values_from = c(prob, wt_o, wt_d)
-  ) %>%
+    values_from = c(prob, wt_o, wt_d, frame_id)
+  ) %>% 
   drop_na() %>%
   mutate(
     is_target = if_else(idx_o_target_pred == idx_o_target, TRUE, FALSE),
@@ -246,14 +179,6 @@ diffs_wide <-
   )
 diffs_wide
 
-diffs_wide %>%
-  filter(game_id == first(game_id), play_id <= 300) %>%
-  select(-idx_o_target, -idx_o_target_pred)
-write_csv(diffs_ex, 'inst/example_target_probs.csv')
-
-
-diffs_wide %>%
-  filter(game_id == first(game_id), play_id <= 300)
 
 p1 <- 0.99
 w1 <- 0.94
@@ -267,7 +192,6 @@ w2 <- 0.99
 positions <- import_positions()
 diffs_by_play <-
   diffs_wide %>%
-  # filter(idx_o_target != idx_o_target_pred) %>%
   left_join(
     players_from_tracking %>%
       rename_with(~sprintf('%s_d', .x), c(nfl_id, position, display_name, jersey_number))
@@ -277,8 +201,6 @@ diffs_by_play <-
       select(position, position_label) %>%
       rename_with(~sprintf('%s_d', .x), c(position, position_label))
   ) %>%
-  # arrange(prob_diff) %>%
-  # select(week, game_id, play_id, is_target, nfl_id_d, position_label_d, display_name_d, jersey_number_d, matches('^prob'), matches('^wt')) %>%
   group_by(week, game_id, play_id, is_target, nfl_id_d, position_label_d, display_name_d, jersey_number_d) %>%
   summarize(
     across(matches('^(prob|wt)_'), sum)
@@ -298,10 +220,8 @@ diffs_by_play %>%
   filter(is_target) %>%
   arrange(prob_diff_wt_d) %>%
   filter(wt_d_start > 0.1 & wt_d_end > 0.1) %>%
-  slice(c(1:2)) %
->% mutate(diffs = map2(game_id, play_id, ~plot_play(game_id = ..1, play_id = ..2)))
-diffs_by_play %>% filter(is_target) %>% arrange(prob_diff_wt_d) %>% slice(c(1:10)) %>% mutate(diffs = map2(game_id, play_id, ~plot_play(game_id = ..1, play_id = ..2)))
-
+  slice(c(1:2)) %>% 
+  mutate(diffs = map2(game_id, play_id, ~plot_play(game_id = ..1, play_id = ..2)))
 
 diffs_by_player <-
   diffs_by_play %>%
