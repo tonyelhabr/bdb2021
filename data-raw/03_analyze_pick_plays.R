@@ -1,4 +1,6 @@
 
+setwd('C:\\Users\\aelhabr\\Documents\\projects\\bdb2021')
+
 # setup ----
 # extrafont::loadfonts(device = 'win', quiet = TRUE)
 library(tidyverse)
@@ -153,14 +155,14 @@ plays_w_pick_info <-
         fct_reorder(.x)
       )
     )
-  ) %>% 
-  select(
-    -one_of(
-      sprintf('n_%s', c('rb', 'wr', 'te', 'dl', 'lb', 'db'))
-    ), 
-    -c(number_of_pass_rushers, defenders_in_the_box)
-  ) %>% 
-  rename_with(~str_remove(.x, '_fct'), matches('_fct'))
+  ) # %>% 
+# select(
+#   -one_of(
+#     sprintf('n_%s', c('rb', 'wr', 'te', 'dl', 'lb', 'db'))
+#   ), 
+#   -c(number_of_pass_rushers, defenders_in_the_box)
+# ) %>% 
+# rename_with(~str_remove(.x, '_fct'), matches('_fct'))
 plays_w_pick_info
 
 viz_pick_play_frac <-
@@ -197,92 +199,151 @@ do_save_plot(viz_pick_play_frac)
 plays_w_pick_info %>% filter(is.na(number_of_pass_rushers))
 plays_w_pick_info %>% filter(is.na(type_dropback))
 
-# plays %>% names()
-# others: 'type_dropback', 'is_defensive_pi', 'personnel_o', 'personnel_d',  'possession_team',
-cols_d <-
-  c(
-    'quarter',
-    'down',
-    sprintf('n_%s', c('rb', 'wr', 'te', 'dl', 'lb', 'db')),
-    'defenders_in_the_box',
-    'number_of_pass_rushers'
-  )
-cols_c_i_added_nflfastr <- 'wp'
-cols_c_i_added <- c(cols_c_i_added_nflfastr, 'pre_snap_score_diff')
-# don't need  'pre_snap_visitor_score' if have home and differential
-cols_c_i <-
-  c(
-    cols_c_i_added,
-    'yards_to_go',
-    'absolute_yardline_number',
-    'pre_snap_home_score'
-  )
-cols_features <- c(cols_d, cols_c_i)
-
-col_y <- 'is_pick_play'
-fmla <-
-  generate_formula(
-    data = plays_w_pick_info, 
-    y = col_y, 
-    x_include = cols_features, 
-    intercept = TRUE
-  )
-
-rec_pick_play_prob <-
-  plays_w_pick_info %>%
-  recipes::recipe(fmla, data = .)
-rec_pick_play_prob
-
-spec_pick_play_prob <-
-  parsnip::logistic_reg() %>%
-  parsnip::set_mode('classification') %>%
-  parsnip::set_engine('glm')
-
-wf_pick_play_prob_model <-
-  workflows::workflow() %>%
-  workflows::add_recipe(rec_pick_play_prob) %>%
-  workflows::add_model(spec_pick_play_prob)
-
-fit_pick_play_prob <-
-  parsnip::fit(wf_pick_play_prob_model, plays_w_pick_info)
-fit_pick_play_prob <- glm(fmla, data = plays_w_pick_info, family = stats::binomial)
-
-pick_plays_probs <-
-  fit_pick_play_prob %>% 
-  broom::augment()
-
-coefs_pick_play_prob <-
-  fit_pick_play_prob %>%
-  broom::tidy() %>%
-  mutate(
-    # across(term, ~str_replace_all(.x, '(^.*)([<>2-8]+)', '\\1_\\2')),
-    across(term, ~fct_reorder(.x, estimate)),
-    lo = estimate - 1.96 * std.error,
-    hi = estimate + 1.96 * std.error,
-    is_signif = if_else(p.value < 0.05, TRUE, FALSE)
-  )
-
-viz_pick_play_prob_coefs <-
-  coefs_pick_play_prob %>%
-  ggplot() +
-  aes(y = term, x = estimate, color = is_signif) +
-  geom_point(size = 2) +
-  geom_errorbarh(aes(xmin = lo, xmax = hi), size = 1) +
-  scale_color_manual(values = c(`TRUE` = 'red', `FALSE` = 'black')) +
-  geom_vline(data = tibble(), aes(xintercept = 0), linetype = 2) +
-  guides(color = guide_legend('Is Statistically Significant?')) +
-  theme(
-    legend.text = element_text(size = 12),
-    legend.title = element_text(size = 12),
-    legend.position = 'top' # ,
-    # legend.box = element_rec()
-  ) +
-  labs(
-    title = 'Play-Level Pick Route Logistic Regression Model Coefficients',
-    y = NULL, x = 'Estimate +- 1.96 Standard Error'
-  )
-viz_pick_play_prob_coefs
-do_save_plot(viz_pick_play_prob_coefs)
+if(FALSE) {
+  # others: 'type_dropback', 'is_defensive_pi', 'personnel_o', 'personnel_d',  'possession_team',
+  cols_d <-
+    c(
+      # 'defenders_in_the_box',
+      # 'number_of_pass_rushers',
+      sprintf('n_%s_fct', c('rb', 'wr', 'te')), # , 'dl', 'lb', 'db')),
+      'quarter',
+      'down'
+    )
+  cols_c_i_added_nflfastr <- 'wp'
+  cols_c_i_added <- c(cols_c_i_added_nflfastr, 'pre_snap_score_diff')
+  # don't need  'pre_snap_visitor_score' if have home and differential
+  cols_c_i <-
+    c(
+      cols_c_i_added,
+      # sprintf('n_%s', c('rb', 'wr', 'te')), # , 'dl', 'lb', 'db')),
+      'yards_to_go',
+      'absolute_yardline_number',
+      'pre_snap_home_score'
+    )
+  cols_features <- c(cols_d, cols_c_i)
+  
+  col_y <- 'is_pick_play'
+  fmla_pick_play_prob <-
+    generate_formula(
+      intercept = TRUE,
+      # intercept = FALSE,
+      data = plays_w_pick_info, 
+      y = col_y, 
+      x_include = cols_features
+    )
+  
+  rec_pick_play_prob <-
+    plays_w_pick_info %>%
+    recipes::recipe(fmla, data = .)
+  rec_pick_play_prob
+  
+  spec_pick_play_prob <-
+    parsnip::logistic_reg(
+      mixture = tune::tune(),
+      penalty = tune::tune()
+    ) %>%
+    parsnip::set_mode('classification') %>%
+    parsnip::set_engine('glmnet')
+  
+  wf_pick_play_prob_model <-
+    workflows::workflow() %>%
+    workflows::add_recipe(rec_pick_play_prob) %>%
+    workflows::add_model(spec_pick_play_prob)
+  
+  set.seed(42)
+  folds_pick_play_prob <-
+    plays_w_pick_info %>% 
+    rsample::vfold_cv(stata = all_of(col_y), v = 10)
+  folds_pick_play_prob
+  
+  grid_params_pick_play_prob <-
+    # dials::grid_regular(
+    dials::grid_max_entropy(
+      dials::mixture(),
+      # dials::finalize(dials::mtry(), trn)
+      # dials::min_n(),
+      dials::finalize(dials::penalty(), plays_w_pick_info),
+      size = 10
+    )
+  grid_params_pick_play_prob
+  
+  require(yardstick)
+  res_grid <-
+    tune::tune_grid(
+      spec_pick_play_prob,
+      fmla_pick_play_prob,
+      resamples = folds_pick_play_prob,
+      control = tune::control_grid(verbose = TRUE),
+      grid = grid_params_pick_play_prob,
+    )
+  res_grid
+  pacman::p_unload('yardstick')
+  # beepr::beep(3)
+  
+  metrics <- res_grid %>% tune::collect_metrics()
+  metrics
+  metrics %>% 
+    # filter(.metric == 'roc_auc') %>% 
+    arrange(-mean)
+  
+  res_grid %>% tune::select_best('roc_auc')
+  res_grid %>% tune::select_best('accuracy')
+  fit_best <- res_grid %>% tune::select_best('roc_auc')
+  fit_best
+  
+  spec_final <- 
+    tune::finalize_model(spec_pick_play_prob, fit_best)
+  spec_final
+  
+  fit_final <- 
+    spec_final %>%
+    parsnip::fit(formula = fmla_pick_play_prob, data = plays_w_pick_info)
+  fit_final
+  
+  fit_final %>% broom::tidy() %>% arrange(-estimate) %>% mutate(across(term, ~fct_reorder(.x, estimate))) %>% ggplot() + aes(y = term, x = estimate) + geom_point()
+  
+  fit_pick_play_prob <-
+    parsnip::fit(wf_pick_play_prob_model, plays_w_pick_info)
+  fit_pick_play_prob <- glm(fmla, data = plays_w_pick_info, family = stats::binomial)
+  
+  pick_plays_probs <-
+    # fit_pick_play_prob %>% 
+    fit_final %>% 
+    broom::augment()
+  
+  coefs_pick_play_prob <-
+    fit_pick_play_prob %>%
+    broom::tidy() %>%
+    mutate(
+      # across(term, ~str_replace_all(.x, '(^.*)([<>2-8]+)', '\\1_\\2')),
+      across(term, ~fct_reorder(.x, estimate)),
+      lo = estimate - 1.96 * std.error,
+      hi = estimate + 1.96 * std.error,
+      is_signif = if_else(p.value < 0.05, TRUE, FALSE)
+    )
+  
+  viz_pick_play_prob_coefs <-
+    coefs_pick_play_prob %>%
+    ggplot() +
+    aes(y = term, x = estimate, color = is_signif) +
+    geom_point(size = 2) +
+    geom_errorbarh(aes(xmin = lo, xmax = hi), size = 1) +
+    scale_color_manual(values = c(`TRUE` = 'red', `FALSE` = 'black')) +
+    geom_vline(data = tibble(), aes(xintercept = 0), linetype = 2) +
+    guides(color = guide_legend('Is Statistically Significant?')) +
+    theme(
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 12),
+      legend.position = 'top' # ,
+      # legend.box = element_rec()
+    ) +
+    labs(
+      title = 'Play-Level Pick Route Logistic Regression Model Coefficients',
+      y = NULL, x = 'Estimate +- 1.96 Standard Error'
+    )
+  viz_pick_play_prob_coefs
+  do_save_plot(viz_pick_play_prob_coefs)
+}
 
 # analyze defense intersections ----
 # Only want the ball snap and end rush frames, not the other event frames.
@@ -448,26 +509,28 @@ save_new_t_test <- function(what = c('same_init_defender', 'intersect'), cnd = d
   # This is hacky but whatever. tbl_summary is not taking symbols
   lab <- list(temp = what_other_pretty)
   names(lab) <- col_other
-  t_test <-
-    pick_features_pretty %>% 
-    dplyr::filter(!!!cnd) %>% 
-    tidyr::drop_na() %>% 
-    dplyr::mutate(
-      dplyr::across(!!col_other_sym, ~stringr::str_replace_all(.x, '(^.*)([YN]$)', '\\2'))
-    ) %>% 
-    gtsummary::tbl_summary(
-      statistic = list(
-        # gtsummary::all_continuous() ~ '{mean} ({sd})',
-        gtsummary::all_categorical() ~ '{n} / {N} ({p}%)'
-      ),
-      # label = !!col_other_sym ~ .what_other_pretty,
-      label = lab,
-      by = !!col_sym
-    ) %>%
-    gtsummary::add_p(
-      test = gtsummary::all_continuous() ~ 't.test',
-      pvalue_fun = function(x) gtsummary::style_pvalue(x, digits = 2)
-    )
+  suppressMessages(
+    t_test <-
+      pick_features_pretty %>% 
+      dplyr::filter(!!!cnd) %>% 
+      tidyr::drop_na() %>% 
+      dplyr::mutate(
+        dplyr::across(!!col_other_sym, ~stringr::str_replace_all(.x, '(^.*)([YN]$)', '\\2'))
+      ) %>% 
+      gtsummary::tbl_summary(
+        statistic = list(
+          # gtsummary::all_continuous() ~ '{mean} ({sd})',
+          gtsummary::all_categorical() ~ '{n} ({p}%)'
+        ),
+        # label = !!col_other_sym ~ what_other_pretty,
+        label = lab,
+        by = !!col_sym
+      ) %>%
+      gtsummary::add_p(
+        test = gtsummary::all_continuous() ~ 't.test',
+        pvalue_fun = function(x) gtsummary::style_pvalue(x, digits = 2)
+      )
+  )
   t_test
   
   if(is.null(suffix)) {
@@ -577,58 +640,52 @@ pick_play_t_test_trunc
 
 # Skipping this for now since it crashes the session when the script is sourced.
 if(FALSE) {
-set.seed(42)
-# theme_set_and_update_bdb()
-viz_t_test <-
-  pick_play_t_test_trunc %>% 
-  drop_na() %>% 
-  # sample_frac(0.1) %>% 
-  ggplot() +
-  aes(y = has_intersect, x = value) +
-  ggbeeswarm::geom_quasirandom(
-    aes(color = has_intersect),
-    groupOnX = FALSE,
-    alpha = 0.2
-  ) +
-  geom_vline(
-    data =
-      pick_play_t_test_trunc %>% 
-      drop_na() %>% 
-      group_by(has_intersect, has_same_init_defender, stat) %>% 
-      summarize(
-        across(value, median)
-      ) %>% 
-      ungroup(),
-    aes(color = has_intersect, xintercept = value, group = has_intersect),
-    size = 1.5
-  ) +
-  facet_wrap(has_same_init_defender ~ stat, scales = 'free', ncol = 2, nrow = 3, dir = 'v') +
-  # scale_color_manual(
-  #   values = c('Is Pick Combo? Y' = 'blue', 'Is Pick Combo? N' = 'grey50')
-  # ) +
-  guides(color = guide_legend('', override.aes = list(size = 3, alpha = 1))) +
-  theme(
-    strip.text.x = element_text(hjust = 0, size = 14),
-    legend.position = 'top',
-    plot.caption = element_text(size = 10),
-    axis.text.y = element_blank()
-  ) +
-  labs(
-    title = 'Distributions By Initial Defender and Pick Route Combo',
-    caption = 'Medians annotated with vertical lines. Extreme values truncated.',
-    x = NULL, y = NULL
-  )
-viz_t_test
-do_save_plot(viz_t_test)
+  set.seed(42)
+  # theme_set_and_update_bdb()
+  viz_t_test <-
+    pick_play_t_test_trunc %>% 
+    drop_na() %>% 
+    # sample_frac(0.1) %>% 
+    ggplot() +
+    aes(y = has_intersect, x = value) +
+    ggbeeswarm::geom_quasirandom(
+      aes(color = has_intersect),
+      groupOnX = FALSE,
+      alpha = 0.2
+    ) +
+    geom_vline(
+      data =
+        pick_play_t_test_trunc %>% 
+        drop_na() %>% 
+        group_by(has_intersect, has_same_init_defender, stat) %>% 
+        summarize(
+          across(value, median)
+        ) %>% 
+        ungroup(),
+      aes(color = has_intersect, xintercept = value, group = has_intersect),
+      size = 1.5
+    ) +
+    facet_wrap(has_same_init_defender ~ stat, scales = 'free', ncol = 2, nrow = 3, dir = 'v') +
+    # scale_color_manual(
+    #   values = c('Is Pick Combo? Y' = 'blue', 'Is Pick Combo? N' = 'grey50')
+    # ) +
+    guides(color = guide_legend('', override.aes = list(size = 3, alpha = 1))) +
+    theme(
+      strip.text.x = element_text(hjust = 0, size = 14),
+      legend.position = 'top',
+      plot.caption = element_text(size = 10),
+      axis.text.y = element_blank()
+    ) +
+    labs(
+      title = 'Distributions By Initial Defender and Pick Route Combo',
+      caption = 'Medians annotated with vertical lines. Extreme values truncated.',
+      x = NULL, y = NULL
+    )
+  viz_t_test
+  do_save_plot(viz_t_test)
 }
 
 # example vizzes ----
-# jersey_numbers <-
-#   players_from_tracking %>%
-#   distinct(game_id, nfl_id, display_name, position, jersey_number)
-
-# TODO: Thinking that I need something like pick_plays, but accounting for all receivers in order to actually compare pick plays man defense vs. non-pick plays man defense instead of just pick play man defense vs. zone defense. This is somewhat accomplished by `pick_features`, but not completely
-# pick_features already has all columns in pick_play_init
 all_plays <-
   pick_features %>%
   # This is the last second measured on the play.
@@ -676,92 +733,35 @@ all_plays <-
   )
 all_plays
 
-# # No longer need this
-# pick_plays <-
-#   pick_play_meta_init %>%
-#   # Now get `epa` numbers from `plays`.
-#   inner_join(
-#     plays %>%
-#       select(
-#         game_id,
-#         play_id,
-#         pass_result,
-#         epa,
-#         nfl_id_target = target_nfl_id
-#       ),
-#     by = c('game_id', 'play_id')
-#   ) %>%
-#   left_join(
-#     pbp %>%
-#       select(game_id, play_id, wpa_nflfastr = wpa, epa_nflfastr = epa),
-#     by = c('game_id', 'play_id')
-#   ) %>%
-#   left_join(
-#     players_from_tracking,
-#     by = c('game_id', 'play_id', 'nfl_id')
-#   ) %>%
-#   left_join(
-#     players_from_tracking %>%
-#       rename_with(~sprintf('%s_intersect', .x), c(nfl_id, display_name, jersey_number, position)),
-#     by = c('game_id', 'play_id', 'nfl_id_intersect')
-#   ) %>%
-#   left_join(
-#     players_from_tracking %>%
-#       rename_with(~sprintf('%s_target', .x), c(nfl_id, display_name, jersey_number, position)),
-#     by = c('game_id', 'play_id', 'nfl_id_target')
-#   ) %>%
-#   mutate(
-#     across(c(nfl_id_target, jersey_number), ~coalesce(.x, -1L)),
-#     across(c(display_name, position), ~coalesce(.x, '?'))
-#   ) %>%
-#   left_join(
-#     routes,
-#     by = c('game_id', 'play_id', 'nfl_id')
-#   ) %>%
-#   left_join(
-#     routes %>%
-#       rename_with(~sprintf('%s_intersect', .x), c(nfl_id, route)),
-#     by = c('game_id', 'play_id', 'nfl_id_intersect')
-#   ) %>%
-#   # There are 2 plays that don't match up. Just drop them with the inner_join
-#   inner_join(
-#     pick_features %>%
-#       select(
-#         game_id,
-#         play_id,
-#         nfl_id,
-#         nfl_id_intersect,
-#         nfl_id_d_robust,
-#         nfl_id_d_robust_init,
-#         is_lo,
-#         sec = sec_intersect,
-#         has_same_init_defender,
-#         has_intersect = has_intersect # This is more useful if we were comparing to all plays, but it's just always TRUE for pick plays
-#       )
-#   ) %>%
-#   left_join(
-#     players_from_tracking %>%
-#       rename_with(~sprintf('%s_d_robust', .x), c(nfl_id, display_name, jersey_number, position)),
-#     by = c('game_id', 'play_id', 'nfl_id_d_robust')
-#   ) %>%
-#   left_join(
-#     players_from_tracking %>%
-#       rename_with(~sprintf('%s_d_robust_init', .x), c(nfl_id, display_name, jersey_number, position)),
-#     by = c('game_id', 'play_id', 'nfl_id_d_robust_init')
-#   )
-# pick_plays
-# pick_plays %>% count(sec)
-# 
-# all_plays %>% 
-#   count(has_intersect, nfl_id_d_robust, display_name_d_robust, sort = TRUE)
-# 
-# all_plays %>% 
-#   count(has_intersect, nfl_id_d_robust_init, display_name_d_robust_init, sort = TRUE)
+pick_plays <-
+  all_plays %>%
+  filter(has_intersect)
 
 all_plays_by_receiver <-
   all_plays %>% 
   count(has_intersect, nfl_id, display_name, is_lo, sort = TRUE)
 all_plays_by_receiver
+
+.n_top <- 20L
+.plot_picks_by_reciever_layers <- function(...) {
+  list(
+    ggplot(),
+    aes(x = ..., y = display_name),
+    geom_col(aes(fill = is_lo)),
+    scale_fill_manual(values = c(`TRUE` = 'blue', `FALSE` = 'grey50')),
+    guides(fill = guide_legend('Is Underneath Route Runner?')),
+    theme(
+      panel.grid.major.y = element_blank(),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 12),
+      legend.position = 'top'
+    ),
+    labs(
+      x = '# of Plays',
+      y = NULL
+    )
+  )
+}
 
 plot_picks_by_receiver <- function(data) {
   data %>%
@@ -773,12 +773,13 @@ plot_picks_by_receiver <- function(data) {
         mutate(
           rnk = row_number(desc(total)),
         ) %>% 
-        filter(rnk <= 20L)
+        filter(rnk <= .n_top)
     ) %>% 
     mutate(
       across(display_name, ~fct_reorder(.x, -rnk))
     ) %>% 
     arrange(rnk) %>% 
+    # TODO: Replace these with above function.
     ggplot() +
     aes(x = n, y = display_name) +
     geom_col(aes(fill = is_lo)) +
@@ -791,24 +792,15 @@ plot_picks_by_receiver <- function(data) {
       legend.position = 'top'
     ) +
     labs(
-      # title = '# of Pick Route Combinations Involved With',
       x = '# of Plays',
       y = NULL
     )
 }
 
-all_plays_by_receiver %>% 
-  group_by(nfl_id, display_name) %>% 
-  mutate(
-    total = sum(n),
-    frac_intersect = n / total
-  ) %>% 
-  filter(has_intersect) %>% 
-  filter(total > 100) %>% 
-  arrange(-frac_intersect)
 
 viz_picks_by_receiver <-
   all_plays_by_receiver %>%
+  filter(has_intersect) %>% 
   plot_picks_by_receiver() +
   labs(
     title = '# of Pick Route Combinations Involved With'
@@ -832,6 +824,36 @@ viz_picks_by_receiver_target <-
 viz_picks_by_receiver_target
 do_save_plot(viz_picks_by_receiver_target)
 
+pick_plays_frac_by_receiver <-
+  all_plays_by_receiver %>% 
+  group_by(nfl_id, display_name) %>% 
+  mutate(
+    total = sum(n),
+    frac_intersect = n / total
+  ) %>% 
+  ungroup() %>% 
+  filter(has_intersect) %>% 
+  # filter(total > 100) %>% 
+  arrange(desc(frac_intersect))
+pick_plays_frac_by_receiver
+
+pick_plays_frac_by_receiver %>%
+  filter(total > 100) %>% 
+  mutate(
+    rnk = row_number(desc(frac_intersect)),
+  ) %>% 
+  filter(rnk <= .n_top) %>% 
+  mutate(
+    across(display_name, ~fct_reorder(.x, -rnk))
+  ) %>% 
+  arrange(rnk) %>% 
+  .plot_picks_by_reciever_layers(frac) +
+  scale_x_continuous(labels = scales::percent) +
+  labs(
+    x = '% of Plays'
+  )
+
+
 # TODO
 Matching::Match(
   Y = plays_w_pick_info$epa,
@@ -841,9 +863,6 @@ Matching::Match(
   estimand = 'ATT'
 )
 
-pick_plays <-
-  all_plays %>%
-  filter(has_intersect) 
 
 # pick_plays_agg <-
 #   all_plays %>%

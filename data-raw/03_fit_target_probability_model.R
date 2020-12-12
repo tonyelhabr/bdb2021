@@ -69,18 +69,27 @@ if(!final) {
   
   res_grid_rf %>% unnest(acc) %>% filter(.set == 'tst')
 } else {
-  stem <- 'target_prob_final_new'
+  stem <- 'target_prob_final_new_by_play'
   set.seed(42)
-  folds <- features_model %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
+  # folds <- features_model %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
+  
+  # If folds is based on play ids.
+  play_ids <- features_model %>% distinct(game_id, play_id, idx_o_target)
+  folds <- play_ids %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
   
   fit_target_prob_split_fold <- function(fold, idx_fold) {
     trn <- fold %>% rsample::analysis()
     tst <- fold %>% rsample::assessment()
+    
+    # If folds is based on play ids.
+    trn <- features_model %>% semi_join(trn)
+    tst <- features_model %>% semi_join(tst)
+    
     fit_target_prob_split_timed(
       trn = trn,
       tst = tst,
       fmla = fmla,
-      min_n = 5,
+      min_n = 25,
       mtry = 39,
       suffix = sprintf('%s_%s', stem, idx_fold)
     )
