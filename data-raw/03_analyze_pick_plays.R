@@ -195,10 +195,6 @@ viz_pick_play_frac <-
 viz_pick_play_frac
 do_save_plot(viz_pick_play_frac)
 
-# Note that we have same number of NAs for these 2. It's cool that they are the same.
-plays_w_pick_info %>% filter(is.na(number_of_pass_rushers))
-plays_w_pick_info %>% filter(is.na(type_dropback))
-
 if(FALSE) {
   # others: 'type_dropback', 'is_defensive_pi', 'personnel_o', 'personnel_d',  'possession_team',
   cols_d <-
@@ -739,6 +735,182 @@ pick_plays <-
   all_plays %>%
   filter(has_intersect)
 
+agg_plays_by <- function(data, ...) {
+  data %>% 
+    group_by(has_intersect, is_lo, ...) %>% 
+    summarize(
+      n = n(),
+      across(matches('^[ew]pa'), list(sum = sum, mean = mean), na.rm = TRUE)
+    ) %>% 
+    ungroup()
+}
+
+agg_all_plays_by <- partial(agg_plays_by, data = all_plays, ... =)
+agg_pick_plays_by <- partial(agg_plays_by, data = pick_plays, ... =)
+
+all_plays_by_defender <-
+  agg_all_plays_by(is_target, has_same_init_defender, nfl_id_d_robust, display_name_d_robust, nfl_id_d_robust_init, display_name_d_robust_init)
+all_plays_by_defender
+
+pick_plays_by_defender <-
+  all_plays_by_defender %>% 
+  group_by(nfl_id = nfl_id_d_robust, display_name = display_name_d_robust, is_target, has_intersect, has_same_init_defender) %>% 
+  summarize(
+    n = sum(n),
+    across(matches('^[ew]pa.*sum$'), sum, na.rm = TRUE)
+  ) %>% 
+  ungroup() %>% 
+  group_by(nfl_id, display_name) %>% 
+  mutate(
+    total = sum(n),
+    frac = n / total
+  ) %>% 
+  ungroup() %>% 
+  arrange(desc(n))
+pick_plays_by_defender
+
+# Have to re-adjust total numbers to just the filtering criteria.
+pick_plays_by_defender_wide_intersect_adj <-
+  pick_plays_by_defender %>% 
+  filter(is_target) %>% 
+  group_by(nfl_id, display_name, is_target) %>% 
+  mutate(
+    total = sum(n)
+  ) %>% 
+  ungroup() %>%
+  mutate(frac = n / total) %>% 
+  pivot_wider(
+    names_from = c(has_intersect),
+    values_from = c(n, frac, matches('^[ew]pa')),
+    values_fill = list(n = 0L, 0)
+  ) %>% 
+  filter(total >= 10)
+pick_plays_by_defender_wide_intersect_adj
+
+pick_plays_by_defender_wide_intersect_adj_annotate_epa_TRUE <-
+  bind_rows(
+    pick_plays_by_defender_wide_intersect_adj %>% 
+      arrange(epa_sum_TRUE) %>% 
+      head(5) %>%
+      mutate(grp = 'top'),
+    pick_plays_by_defender_wide_intersect_adj %>% 
+      arrange(-epa_sum_TRUE) %>% 
+      head(5) %>% 
+      mutate(grp = 'bottom')
+  )
+
+pick_plays_by_defender_wide_intersect_adj_annotate_epa_FALSE <-
+  bind_rows(
+    pick_plays_by_defender_wide_intersect_adj %>% 
+      anti_join(pick_plays_by_defender_wide_intersect_adj_annotate_epa_TRUE) %>% 
+      arrange(epa_sum_FALSE) %>% 
+      head(5) %>%
+      mutate(grp = 'top'),
+    pick_plays_by_defender_wide_intersect_adj %>% 
+      anti_join(pick_plays_by_defender_wide_intersect_adj_annotate_epa_TRUE) %>% 
+      arrange(-epa_sum_FALSE) %>% 
+      head(5) %>% 
+      mutate(grp = 'bottom')
+  )
+
+pts <- function (x) {
+  as.numeric(grid::convertUnit(grid::unit(x, 'pt'), 'mm'))
+}
+
+viz_pick_plays_by_defender_wide_intersect_adj <-
+  pick_plays_by_defender_wide_intersect_adj %>% 
+  ggplot() +
+  aes(y = epa_sum_FALSE, x = epa_sum_TRUE) +
+  geom_abline(
+    data = tibble(intercept = seq(-30, 30, by = 10), slope = -1),
+    aes(intercept = intercept, slope = slope),
+    linetype = 2
+  ) +
+  geom_point(
+    # data = pick_plays_by_defender_wide_intersect_adj %>% anti_join(pick_plays_by_defender_wide_intersect_adj_annotate),
+    aes(size = total), alpha = 0.2
+  ) +
+  geom_point(
+    data = pick_plays_by_defender_wide_intersect_adj_annotate_epa_TRUE %>% filter(grp == 'top'),
+    aes(size = total),
+    show.legend = FALSE,
+    color = 'dodgerblue'
+  ) +
+  ggrepel::geom_text_repel(
+    data = pick_plays_by_defender_wide_intersect_adj_annotate_epa_TRUE %>% filter(grp == 'top'),
+    aes(label = display_name),
+    show.legend = FALSE,
+    family = 'Karla',
+    color = 'dodgerblue'
+  ) +
+  geom_point(
+    data = pick_plays_by_defender_wide_intersect_adj_annotate_epa_TRUE %>% filter(grp == 'bottom'),
+    aes(size = total),
+    show.legend = FALSE,
+    color = 'darkorange'
+  ) +
+  ggrepel::geom_text_repel(
+    data = pick_plays_by_defender_wide_intersect_adj_annotate_epa_TRUE %>% filter(grp == 'bottom'),
+    aes(label = display_name),
+    show.legend = FALSE,
+    family = 'Karla',
+    color = 'darkorange'
+  ) +
+  geom_point(
+    data = pick_plays_by_defender_wide_intersect_adj_annotate_epa_FALSE %>% filter(grp == 'top'),
+    aes(size = total),
+    show.legend = FALSE,
+    color = 'indianred'
+  ) +
+  ggrepel::geom_text_repel(
+    data = pick_plays_by_defender_wide_intersect_adj_annotate_epa_FALSE %>% filter(grp == 'top'),
+    aes(label = display_name),
+    show.legend = FALSE,
+    family = 'Karla',
+    color = 'indianred'
+  ) +
+  geom_point(
+    data = pick_plays_by_defender_wide_intersect_adj_annotate_epa_FALSE %>% filter(grp == 'bottom'),
+    aes(size = total),
+    show.legend = FALSE,
+    color = 'forestgreen'
+  ) +
+  ggrepel::geom_text_repel(
+    data = pick_plays_by_defender_wide_intersect_adj_annotate_epa_FALSE %>% filter(grp == 'bottom'),
+    aes(label = display_name),
+    show.legend = FALSE,
+    family = 'Karla',
+    color = 'forestgreen'
+  ) +
+  geom_text(
+    aes(x = 5.1, y = 45, label = 'Best on pick plays'), color = 'dodgerblue', size = pts(14), hjust = 0
+  ) +
+  geom_text(
+    aes(x = 5.1, y = 42, label = 'Worst on pick plays'), color = 'darkorange', size = pts(14), hjust = 0
+  ) +
+  geom_text(
+    aes(x = 5.1, y = 39, label = 'Best on non-pick plays'), color = 'indianred', size = pts(14), hjust = 0
+  ) +
+  geom_text(
+    aes(x = 5.1, y = 36, label = 'Worst on non-pick plays'), color = 'forestgreen', size = pts(14), hjust = 0
+  ) +
+  guides(
+    size = guide_legend(title = '# of total plays', override.aes = list(alpha = 1))
+  ) +
+  # coord_equal(xlim = c(-30, 30)) +
+  theme(
+    plot.caption = element_text(size = 10),
+    legend.position = 'top'
+  ) +
+  labs(
+    title = 'Aggreggate EPA when covering targeted receiver',
+    caption = 'Minimum of 10 pick plays covered.\nPlot does not differentiate based on type of coverage (e.g. man). Defender at time of thow is used.',
+    y = 'EPA on non-pick plays',
+    x = 'EPA on pick plays'
+  )
+viz_pick_plays_by_defender_wide_intersect_adj
+do_save_plot(viz_pick_plays_by_defender_wide_intersect_adj)
+
 all_plays_by_receiver <-
   all_plays %>% 
   count(has_intersect, nfl_id, display_name, is_lo, sort = TRUE)
@@ -830,6 +1002,7 @@ all_plays_by_receiver_target <-
   count(has_intersect, nfl_id = nfl_id_target, display_name = display_name_target, is_lo, sort = TRUE)
 all_plays_by_receiver_target
 
+# TODO: Don't highlight is lo in this since it's not what is being ephasized.
 viz_picks_by_receiver_target <-
   all_plays_by_receiver_target %>%
   filter(has_intersect) %>% 
@@ -840,7 +1013,7 @@ viz_picks_by_receiver_target <-
 viz_picks_by_receiver_target
 do_save_plot(viz_picks_by_receiver_target)
 
-pick_plays_frac_by_receiver <-
+pick_plays_by_receiver <-
   all_plays_by_receiver %>% 
   group_by(nfl_id, display_name, has_intersect) %>% 
   summarize(
@@ -853,10 +1026,10 @@ pick_plays_frac_by_receiver <-
     frac = n / total
   ) %>% 
   ungroup()
-pick_plays_frac_by_receiver
+pick_plays_by_receiver
 
 viz_frac_by_receiver <-
-  pick_plays_frac_by_receiver %>% 
+  pick_plays_by_receiver %>% 
   # select(-total) %>% 
   pivot_wider(
     names_from = has_intersect,
@@ -865,16 +1038,16 @@ viz_frac_by_receiver <-
   ggplot() +
   aes(x = total, y = n_TRUE) +
   geom_point() +
-  geom_smooth(method = 'lm', formula = formula(y ~ x), se = FALSE, color = 'black', linetype = 2) +
+  geom_smooth(method = 'lm', formula = formula(y ~ x + 0), se = FALSE, color = 'black', linetype = 2) +
   geom_point(
     data = 
-      pick_plays_frac_by_receiver_top,
+      pick_plays_by_receiver_top,
     aes(x = total, y = n),
     color = 'red'
   ) +
   ggrepel::geom_text_repel(
     data = 
-      pick_plays_frac_by_receiver_top,
+      pick_plays_by_receiver_top,
     aes(x = total, y = n, label = display_name),
     family = 'Karla',
     segment.color = 'red',
