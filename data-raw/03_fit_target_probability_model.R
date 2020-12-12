@@ -100,16 +100,17 @@ if(!final) {
     mutate(
       across(id, ~.x %>% str_remove('Fold') %>% as.integer())
     ) %>% 
+    tail(6) %>% 
     rename(idx_fold = id) %>% 
     mutate(res = map2(splits, idx_fold, fit_target_prob_split_fold))
   res_folds
   
   probs_folds <-
     fs::dir_ls(
-      .get_dir_data(),
+      get_bdb_dir_data(),
       regexp = sprintf('%s_fold_.*parquet', stem)
     ) %>%
     map_dfr(~arrow::read_parquet(.x))
   probs_folds
-  arrow::write_parquet(probs_folds, file.path(.get_dir_data(), sprintf('%s_folds.parquet', stem))
+  arrow::write_parquet(probs_folds, file.path(get_bdb_dir_data(), sprintf('%s_folds.parquet', stem))
 }

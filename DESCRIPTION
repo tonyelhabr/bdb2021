@@ -29,7 +29,8 @@ Imports:
     usethis,
     vroom,
     ggtext,
-    memoise
+    memoise,
+    gganimate
 Suggests: 
     knitr,
     rmarkdown,

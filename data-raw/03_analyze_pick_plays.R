@@ -156,13 +156,13 @@ plays_w_pick_info <-
       )
     )
   ) # %>% 
-# select(
-#   -one_of(
-#     sprintf('n_%s', c('rb', 'wr', 'te', 'dl', 'lb', 'db'))
-#   ), 
-#   -c(number_of_pass_rushers, defenders_in_the_box)
-# ) %>% 
-# rename_with(~str_remove(.x, '_fct'), matches('_fct'))
+  # select(
+  #   -one_of(
+  #     sprintf('n_%s', c('rb', 'wr', 'te', 'dl', 'lb', 'db'))
+  #   ), 
+  #   -c(number_of_pass_rushers, defenders_in_the_box)
+  # ) %>% 
+  # rename_with(~str_remove(.x, '_fct'), matches('_fct'))
 plays_w_pick_info
 
 viz_pick_play_frac <-
@@ -480,7 +480,7 @@ pick_features_pretty
 #   res <-
 #     t_test %>% 
 #     gtsummary::as_gt() %>% 
-#     gt::gtsave(filename = file.path(.get_dir_figs(), sprintf('t_test_%s.png', what)))
+#     gt::gtsave(filename = file.path(get_bdb_dir_figs(), sprintf('t_test_%s.png', what)))
 #   t_test
 # }
 # 
@@ -488,6 +488,7 @@ pick_features_pretty
 # save_t_test('intersect')
 
 # t-test method 2 (best) ----
+if(FALSE) {
 save_new_t_test <- function(what = c('same_init_defender', 'intersect'), cnd = dplyr::quos(TRUE), suffix = NULL, sep = '_') {
   what <- match.arg(what)
   what_other <- 
@@ -541,7 +542,7 @@ save_new_t_test <- function(what = c('same_init_defender', 'intersect'), cnd = d
   res <-
     t_test %>% 
     gtsummary::as_gt() %>% 
-    gt::gtsave(filename = file.path(.get_dir_figs(), sprintf('new_t_test_%s%s.png', what, suffix)))
+    gt::gtsave(filename = file.path(get_bdb_dir_figs(), sprintf('new_t_test_%s%s.png', what, suffix)))
   t_test
 }
 
@@ -567,7 +568,7 @@ save_new_t_test(
   cnd = dplyr::quos(.data$has_same_init_defender %>% str_detect('Y$')),
   suffix = 'w_diff_defender'
 )
-
+}
 # t-test method 3 ----
 # pick_features_target_long <-
 #   pick_features %>% 
@@ -607,6 +608,7 @@ save_new_t_test(
 # pick_intersect_t_test
 
 # t test vizzing ----
+if(FALSE) {
 pick_play_t_test_trunc <-
   pick_features_pretty %>% 
   pivot_longer(
@@ -639,50 +641,50 @@ pick_play_t_test_trunc
 #   facet_wrap(stat ~ has_same_init_defender, scales = 'free', ncol = 2, nrow = 3)
 
 # Skipping this for now since it crashes the session when the script is sourced.
-if(FALSE) {
-  set.seed(42)
-  # theme_set_and_update_bdb()
-  viz_t_test <-
-    pick_play_t_test_trunc %>% 
-    drop_na() %>% 
-    # sample_frac(0.1) %>% 
-    ggplot() +
-    aes(y = has_intersect, x = value) +
-    ggbeeswarm::geom_quasirandom(
-      aes(color = has_intersect),
-      groupOnX = FALSE,
-      alpha = 0.2
-    ) +
-    geom_vline(
-      data =
-        pick_play_t_test_trunc %>% 
-        drop_na() %>% 
-        group_by(has_intersect, has_same_init_defender, stat) %>% 
-        summarize(
-          across(value, median)
-        ) %>% 
-        ungroup(),
-      aes(color = has_intersect, xintercept = value, group = has_intersect),
-      size = 1.5
-    ) +
-    facet_wrap(has_same_init_defender ~ stat, scales = 'free', ncol = 2, nrow = 3, dir = 'v') +
-    # scale_color_manual(
-    #   values = c('Is Pick Combo? Y' = 'blue', 'Is Pick Combo? N' = 'grey50')
-    # ) +
-    guides(color = guide_legend('', override.aes = list(size = 3, alpha = 1))) +
-    theme(
-      strip.text.x = element_text(hjust = 0, size = 14),
-      legend.position = 'top',
-      plot.caption = element_text(size = 10),
-      axis.text.y = element_blank()
-    ) +
-    labs(
-      title = 'Distributions By Initial Defender and Pick Route Combo',
-      caption = 'Medians annotated with vertical lines. Extreme values truncated.',
-      x = NULL, y = NULL
-    )
-  viz_t_test
-  do_save_plot(viz_t_test)
+
+set.seed(42)
+# theme_set_and_update_bdb()
+viz_t_test <-
+  pick_play_t_test_trunc %>% 
+  drop_na() %>% 
+  # sample_frac(0.1) %>% 
+  ggplot() +
+  aes(y = has_intersect, x = value) +
+  ggbeeswarm::geom_quasirandom(
+    aes(color = has_intersect),
+    groupOnX = FALSE,
+    alpha = 0.2
+  ) +
+  geom_vline(
+    data =
+      pick_play_t_test_trunc %>% 
+      drop_na() %>% 
+      group_by(has_intersect, has_same_init_defender, stat) %>% 
+      summarize(
+        across(value, median)
+      ) %>% 
+      ungroup(),
+    aes(color = has_intersect, xintercept = value, group = has_intersect),
+    size = 1.5
+  ) +
+  facet_wrap(has_same_init_defender ~ stat, scales = 'free', ncol = 2, nrow = 3, dir = 'v') +
+  # scale_color_manual(
+  #   values = c('Is Pick Combo? Y' = 'blue', 'Is Pick Combo? N' = 'grey50')
+  # ) +
+  guides(color = guide_legend('', override.aes = list(size = 3, alpha = 1))) +
+  theme(
+    strip.text.x = element_text(hjust = 0, size = 14),
+    legend.position = 'top',
+    plot.caption = element_text(size = 10),
+    axis.text.y = element_blank()
+  ) +
+  labs(
+    title = 'Distributions By Initial Defender and Pick Route Combo',
+    caption = 'Medians annotated with vertical lines. Extreme values truncated.',
+    x = NULL, y = NULL
+  )
+viz_t_test
+do_save_plot(viz_t_test)
 }
 
 # example vizzes ----
@@ -742,13 +744,27 @@ all_plays_by_receiver <-
   count(has_intersect, nfl_id, display_name, is_lo, sort = TRUE)
 all_plays_by_receiver
 
+all_plays_by_receiver <-
+  all_plays %>% 
+  group_by(has_intersect, nfl_id, display_name, is_lo) %>% 
+  summarize(
+    n = n(),
+    across(matches('^[ew]pa'), mean)
+  ) %>% 
+  ungroup()
+all_plays_by_receiver
+
+all_plays_by_receiver %>% 
+  filter(has_intersect) %>% 
+  filter(n >= 25) %>% 
+  arrange(desc(epa))
+
 .n_top <- 20L
 .plot_picks_by_reciever_layers <- function(...) {
   list(
-    ggplot(),
     aes(x = ..., y = display_name),
-    geom_col(aes(fill = is_lo)),
-    scale_fill_manual(values = c(`TRUE` = 'blue', `FALSE` = 'grey50')),
+    # geom_col(aes(fill = is_lo)),
+    scale_fill_manual(values = c(`TRUE` = 'dodgerblue', `FALSE` = 'darkorange')),
     guides(fill = guide_legend('Is Underneath Route Runner?')),
     theme(
       panel.grid.major.y = element_blank(),
@@ -783,7 +799,7 @@ plot_picks_by_receiver <- function(data) {
     ggplot() +
     aes(x = n, y = display_name) +
     geom_col(aes(fill = is_lo)) +
-    scale_fill_manual(values = c(`TRUE` = 'blue', `FALSE` = 'grey50')) +
+    scale_fill_manual(values = c(`TRUE` = 'dodgerblue', `FALSE` = 'darkorange')) +
     guides(fill = guide_legend('Is Underneath Route Runner?')) +
     theme(
       panel.grid.major.y = element_blank(),
@@ -797,7 +813,6 @@ plot_picks_by_receiver <- function(data) {
     )
 }
 
-
 viz_picks_by_receiver <-
   all_plays_by_receiver %>%
   filter(has_intersect) %>% 
@@ -805,6 +820,7 @@ viz_picks_by_receiver <-
   labs(
     title = '# of Pick Route Combinations Involved With'
   )
+viz_picks_by_receiver
 do_save_plot(viz_picks_by_receiver)
 
 all_plays_by_receiver_target <-
@@ -826,33 +842,56 @@ do_save_plot(viz_picks_by_receiver_target)
 
 pick_plays_frac_by_receiver <-
   all_plays_by_receiver %>% 
+  group_by(nfl_id, display_name, has_intersect) %>% 
+  summarize(
+    n = sum(n)
+  ) %>% 
+  ungroup() %>% 
   group_by(nfl_id, display_name) %>% 
   mutate(
     total = sum(n),
-    frac_intersect = n / total
+    frac = n / total
   ) %>% 
-  ungroup() %>% 
-  filter(has_intersect) %>% 
-  # filter(total > 100) %>% 
-  arrange(desc(frac_intersect))
+  ungroup()
 pick_plays_frac_by_receiver
 
-pick_plays_frac_by_receiver %>%
-  filter(total > 100) %>% 
-  mutate(
-    rnk = row_number(desc(frac_intersect)),
+viz_frac_by_receiver <-
+  pick_plays_frac_by_receiver %>% 
+  # select(-total) %>% 
+  pivot_wider(
+    names_from = has_intersect,
+    values_from = c(n, frac)
   ) %>% 
-  filter(rnk <= .n_top) %>% 
-  mutate(
-    across(display_name, ~fct_reorder(.x, -rnk))
-  ) %>% 
-  arrange(rnk) %>% 
-  .plot_picks_by_reciever_layers(frac) +
-  scale_x_continuous(labels = scales::percent) +
+  ggplot() +
+  aes(x = total, y = n_TRUE) +
+  geom_point() +
+  geom_smooth(method = 'lm', formula = formula(y ~ x), se = FALSE, color = 'black', linetype = 2) +
+  geom_point(
+    data = 
+      pick_plays_frac_by_receiver_top,
+    aes(x = total, y = n),
+    color = 'red'
+  ) +
+  ggrepel::geom_text_repel(
+    data = 
+      pick_plays_frac_by_receiver_top,
+    aes(x = total, y = n, label = display_name),
+    family = 'Karla',
+    segment.color = 'red',
+    segment.size = 0.2,
+    color = 'red'
+  ) +
+  theme(
+    plot.caption = element_text(size = 10),
+  ) +
   labs(
-    x = '% of Plays'
+    title = 'Relative Number of Pick Routes Ran',
+    caption = 'Players with highest ratio of pick plays annotated (minimum 200 plays).\nLinear regression fit shown as dotted line',
+    x = '# of plays',
+    y = '# of plays Involved in pick route combination'
   )
-
+viz_frac_by_receiver
+save_plot(viz_frac_by_receiver)
 
 # TODO
 Matching::Match(
@@ -905,7 +944,7 @@ pick_plays_meta_viz <-
                      target: {display_name_target} ({jersey_number_target}, {position_target}). Play result: {pass_result}. Yards gained: {yards_gained}.
                      BDB EPA: {scales::number(epa, accuracy = 0.01)}, nflfastR EPA: {scales::number(epa_nflfastr, accuracy = 0.01)}, nflfastR WPA: {scales::number(wpa_nflfastr, accuracy = 0.01)}'),
     path = file.path(
-      .get_dir_data(), 
+      bdb2021:::get_bdb_dir_figs(), 
       sprintf(
         'is_pick_play=%s-sec=%1.1f-pass_complete=%s-is_lo=%s-target_is_intersect=%s-high_epa=%s-%s-%s.png', 'Y', 
         sec_intersect, 
@@ -935,7 +974,7 @@ primary_example_pick_plays <-
   ) %>% 
   reduce(bind_rows) %>% 
   mutate(
-    path = file.path(.get_dir_figs(), sprintf('%s_pick_play.png', descr))
+    path = file.path(dirname(path), sprintf('%s_pick_play.png', descr))
   )
 primary_example_pick_plays
 
@@ -968,7 +1007,7 @@ secondary_example_pick_plays <-
   ) %>% 
   reduce(bind_rows) %>% 
   mutate(
-    path = file.path(.get_dir_figs(), sprintf('%s_pick_play.png', descr))
+    path = file.path(dirname(path), sprintf('%s_pick_play.png', descr))
   )
 secondary_example_pick_plays
 

@@ -267,7 +267,7 @@ fit_target_prob_split <- function(trn, tst, fmla, min_n = 2, mtry = 42, trees = 
   .display_info('Fitting rf for `min_n = {min_n}`, `mtry = {mtry}`, `trees = {trees}` at {Sys.time()}.')
   path_suffix <- sprintf('%s-min_n=%d-mtry=%d-trees=%d', suffix, min_n, mtry, trees)
   .path <- function(prefix, ext) {
-    file.path(.get_dir_data(), sprintf('%s-%s.%s', prefix, path_suffix, ext))
+    file.path(get_bdb_dir_data(), sprintf('%s-%s.%s', prefix, path_suffix, ext))
   }
   
   path_fit <- .path('fit', ext = 'rds')

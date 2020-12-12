@@ -37,15 +37,27 @@
 
 #' @export
 save_animation <-
-  function(gg,
-           file = deparse(substitute(gg)),
-           ext = 'png',
-           dir = .get_dir_figs(),
+  function(anim,
+           height = 600,
+           width = width,
+           fps = 10,
+           end_pause = fps,
+           file = deparse(substitute(anim)),
+           ext = 'gif',
+           dir = get_bdb_dir_figs(),
            path = file.path(dir, sprintf('%s.%s', file, ext)),
-           height = 8,
-           width = height,
+           renderer = gganimate::gifski_renderer(path),
            ...) {
-    ggplot2::ggsave(plot = gg, filename = path, width = width, height = height, type = 'cairo', ...)
+    res <-
+      gganimate::animate(
+        anim,
+        fps = fps,
+        height = height,
+        width = width,
+        renderer = gganimate::gifski_renderer(path),
+        end_pause = end_pause,
+        ...
+      )
   }
 
 #' Plot a play
@@ -57,7 +69,7 @@ save_animation <-
 #' \dontrun{
 #' plot_play()
 #' }
-#'
+#' @export
 animate_play <-
   function(game_id = 2018090600,
            play_id = 75,
@@ -77,7 +89,7 @@ animate_play <-
            nearest_defender = FALSE,
            target_probability = FALSE,
            save = TRUE,
-           dir = .get_dir_figs(),
+           dir = get_bdb_dir_figs(),
            filename = sprintf('%s-%s.gif', game_id, play_id),
            path = file.path(dir, filename),
            # width = 10,
@@ -208,7 +220,7 @@ animate_play <-
     }
     
     if(target_probability) {
-      # fit <- file.path(.get_dir_data(), 'fit-tp-final.rds') %>% read_rds()
+      # fit <- file.path(get_bdb_dir_data(), 'fit-tp-final.rds') %>% read_rds()
       # fit
       features <- 
         generate_target_prob_features(
@@ -418,8 +430,8 @@ animate_play <-
     seconds <- ball %>% nrow() %>% {. / 10}
     nframe <- (seconds + end_pause) * fps
     
-    res <-
-      gganimate::animate(
+    res <- 
+      save_animation(
         anim,
         nframe = nframe,
         fps = fps,
@@ -428,5 +440,4 @@ animate_play <-
         renderer = gganimate::gifski_renderer(path),
         end_pause = end_pause * fps
       )
-    res
   }

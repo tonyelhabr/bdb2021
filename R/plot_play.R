@@ -4,7 +4,7 @@ save_plot <-
   function(gg,
            file = deparse(substitute(gg)),
            ext = 'png',
-           dir = .get_dir_figs(),
+           dir = get_bdb_dir_figs(),
            path = file.path(dir, sprintf('%s.%s', file, ext)),
            height = 8,
            width = height,
@@ -21,7 +21,7 @@ save_plot <-
 #' \dontrun{
 #' plot_play()
 #' }
-#'
+#' @export
 plot_play <-
   function(game_id = 2018090600,
            play_id = 75,
@@ -40,7 +40,7 @@ plot_play <-
            buffer = NULL,
            at = 'end_routes',
            save = TRUE,
-           dir = .get_dir_figs(),
+           dir = get_bdb_dir_figs(),
            filename = sprintf('%s-%s.png', game_id, play_id),
            path = file.path(dir, filename),
            width = 10,

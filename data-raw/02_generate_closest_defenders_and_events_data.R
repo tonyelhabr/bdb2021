@@ -30,9 +30,9 @@ data('personnel_and_rushers', package = 'bdb2021')
 
 do_generate_features_at_events <- function(week = 1L, overwrite_features = FALSE, ...) {
 
-  # path_min_dists <- file.path(.get_dir_data(), sprintf('min_dists_robust_week%d.parquet', week))
+  # path_min_dists <- file.path(get_bdb_dir_data(), sprintf('min_dists_robust_week%d.parquet', week))
 
-  path_features <- file.path(.get_dir_data(), sprintf('min_dists_features_week%d.parquet', week))
+  path_features <- file.path(get_bdb_dir_data(), sprintf('min_dists_features_week%d.parquet', week))
   # browser()
   if(file.exists(path_features) & !overwrite_features) {
     .display_info('Importing features for week {week} at {Sys.time()} and not re-generating.')
@@ -303,8 +303,8 @@ weeks <- c(1:17L)
 features <- weeks %>% do_by_week(do_generate_features_at_events, overwrite_features = TRUE)
 # features
 # features %>% count(week, game_id, play_id, frame_id, event, sort = TRUE)
-# # arrow::write_parquet(features, file.path(.get_dir_data(), 'features.parquet'))
-# # features <- file.path(.get_dir_data(), 'features.parquet') %>% arrow::read_parquet()
+# # arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'features.parquet'))
+# # features <- file.path(get_bdb_dir_data(), 'features.parquet') %>% arrow::read_parquet()
 # # features %>% filter(week == 2L)
 # # # TODO: Add this removal of bad plays to the generate features script.
 # features_n <-

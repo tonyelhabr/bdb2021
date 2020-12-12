@@ -3,7 +3,7 @@
 # TODO: Put this into 2 separate scripts
 # Why do I have this again? I think it was to isolate the ep part?
 library(tidyverse)
-path_pbp_nflfastr <- file.path(.get_dir_data(), 'pbp_init_nflfastr.parquet')
+path_pbp_nflfastr <- file.path(get_bdb_dir_data(), 'pbp_init_nflfastr.parquet')
 
 # ----
 sched <- nflfastR::fast_scraper_schedules(2018)

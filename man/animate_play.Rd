@@ -20,10 +20,10 @@ animate_play(
   sideline_color = "white",
   endzone_color = NULL,
   buffer = NULL,
-  nearest_defender = TRUE,
-  target_probability = TRUE,
+  nearest_defender = FALSE,
+  target_probability = FALSE,
   save = TRUE,
-  dir = .get_dir_figs(),
+  dir = get_bdb_dir_figs(),
   filename = sprintf("\%s-\%s.gif", game_id, play_id),
   path = file.path(dir, filename),
   end_pause = 1,
@@ -45,5 +45,4 @@ Plot a play
 \dontrun{
 plot_play()
 }
-
 }

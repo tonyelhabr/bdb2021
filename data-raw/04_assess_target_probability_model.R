@@ -4,7 +4,7 @@ library(bdb2021)
 
 paths_acc <-
   fs::dir_ls(
-    .get_dir_data(),
+    get_bdb_dir_data(),
     regexp = 'acc.*csv$'
   )
 paths_acc

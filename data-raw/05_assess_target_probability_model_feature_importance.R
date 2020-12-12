@@ -4,7 +4,7 @@ library(tidyverse)
   what <- match.arg(what)
   # prefix2 <- match.arg(prefix2)
   ext <- switch(what, 'acc' = 'csv', 'fit' = 'rds', 'probs' = 'parquet')
-  path <- file.path(.get_dir_data(), sprintf('%s-%s-min_n=%d-mtry=%d-trees=%d.%s', what, prefix, min_n, mtry, trees, ext))
+  path <- file.path(get_bdb_dir_data(), sprintf('%s-%s-min_n=%d-mtry=%d-trees=%d.%s', what, prefix, min_n, mtry, trees, ext))
   if(!strict) {
     return(path)
   }

@@ -62,13 +62,13 @@ data('personnel_and_rushers', package = 'bdb2021')
 
 do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_features = TRUE, overwrite_min_dists = FALSE, overwrite_min_dists_target = TRUE, ...) {
 
-  path_min_dists <- file.path(.get_dir_data(), sprintf('min_dists_robust_week%d.parquet', week))
+  path_min_dists <- file.path(get_bdb_dir_data(), sprintf('min_dists_robust_week%d.parquet', week))
   do_min_dists <- !file.exists(path_min_dists) | overwrite_min_dists
 
-  path_min_dists_target <- file.path(.get_dir_data(), sprintf('min_dists_naive_target_week%d.parquet', week))
+  path_min_dists_target <- file.path(get_bdb_dir_data(), sprintf('min_dists_naive_target_week%d.parquet', week))
   do_min_dists_target <- !file.exists(path_min_dists_target) | overwrite_min_dists_target
 
-  path_features <- file.path(.get_dir_data(), sprintf('features_week%d.parquet', week))
+  path_features <- file.path(get_bdb_dir_data(), sprintf('features_week%d.parquet', week))
   # browser()
   do_features <- !file.exists(path_features) | overwrite_features
   if(!do_features) {
@@ -572,14 +572,14 @@ new_features <-
   features %>%
   anti_join(bad_feature_ids)
 new_features
-arrow::write_parquet(features, file.path(.get_dir_data(), 'new_features.parquet'))
+arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'new_features.parquet'))
 
 
 min_dists_naive_target <-
   weeks %>%
   sprintf('min_dists_naive_target_week%d.parquet', .) %>%
-  file.path(.get_dir_data(), .) %>%
+  file.path(get_bdb_dir_data(), .) %>%
   map_dfr(arrow::read_parquet)
 min_dists_naive_target
-arrow::write_parquet(min_dists_naive_target, file.path(.get_dir_data(), 'min_dists_naive_target.parquet'))
+arrow::write_parquet(min_dists_naive_target, file.path(get_bdb_dir_data(), 'min_dists_naive_target.parquet'))
 beepr::beep(3)

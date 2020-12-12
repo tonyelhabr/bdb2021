@@ -22,7 +22,7 @@ plot_play(
   buffer = NULL,
   at = "end_routes",
   save = TRUE,
-  dir = .get_dir_figs(),
+  dir = get_bdb_dir_figs(),
   filename = sprintf("\%s-\%s.png", game_id, play_id),
   path = file.path(dir, filename),
   width = 10,
@@ -42,5 +42,4 @@ Plot a play
 \dontrun{
 plot_play()
 }
-
 }

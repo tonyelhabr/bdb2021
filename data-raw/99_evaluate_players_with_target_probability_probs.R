@@ -150,7 +150,7 @@ diffs_wide_init
 
 diffs_wide_init %>% 
   select(game_id, play_id, frame_id, nfl_id = nfl_id_target_pred, nfl_id_d, prob, wt_o, wt_d) %>% 
-  arrow::write_parquet(file.path(.get_dir_data(), 'target_probs_clean.parquet'))
+  arrow::write_parquet(file.path(get_bdb_dir_data(), 'target_probs_clean.parquet'))
 
 diffs_wide <-
   diffs_wide_init %>% 

@@ -3,21 +3,24 @@
 #'
 #' Get directory where file is stored, which is dependent on whether the code is run locally or on Kaggle.
 #' Best to change with `options(bdb2021.dir_in = <dir>)` so that other `import_*()`
-.get_dir_in <- function() {
+#' @export
+get_bdb_dir_in <- function() {
   getOption('bdb2021.dir_in')
 }
 
 #' Get output directory
 #'
 #' Get folder where package intermediate data is saved
-.get_dir_data <- function() {
+#' @export
+get_bdb_dir_data <- function() {
   getOption('bdb2021.dir_data')
 }
 
 #' Get output directory
 #'
 #' Get folder where package intermediate data is saved
-.get_dir_figs <- function() {
+#' @export
+get_bdb_dir_figs <- function() {
   getOption('bdb2021.dir_figs')
 }
 
@@ -33,7 +36,7 @@
 #' }
 #' @export
 import_positions <- memoise::memoise({function() {
-  path <- file.path(.get_dir_in(), 'positions.csv')
+  path <- file.path(get_bdb_dir_in(), 'positions.csv')
   positions <-
     path %>%
     vroom::vroom(
@@ -56,7 +59,7 @@ import_positions <- memoise::memoise({function() {
 #' }
 #' @export
 import_colors <- memoise::memoise({function() {
-  path <- file.path(.get_dir_in(), 'teamcolors.csv')
+  path <- file.path(get_bdb_dir_in(), 'teamcolors.csv')
   colors <-
     path %>%
     vroom::vroom(
@@ -86,7 +89,7 @@ import_colors <- memoise::memoise({function() {
 #' }
 #' @export
 import_tracking <- function(week = 1, positions = import_positions(), standardize = TRUE) {
-  path <- file.path(.get_dir_in(), sprintf('week%d.csv', week))
+  path <- file.path(get_bdb_dir_in(), sprintf('week%d.csv', week))
   tracking <-
     path %>%
     vroom::vroom(
@@ -177,7 +180,7 @@ import_tracking <- function(week = 1, positions = import_positions(), standardiz
 #' }
 #' @export
 import_games <- memoise::memoise({function() {
-  path <- file.path(.get_dir_in(), 'games.csv')
+  path <- file.path(get_bdb_dir_in(), 'games.csv')
   games <-
     path %>%
     vroom::vroom(
@@ -204,7 +207,7 @@ import_games <- memoise::memoise({function() {
 #' }
 #' @export
 import_players <- memoise::memoise({function() {
-  path <- file.path(.get_dir_in(), 'players.csv')
+  path <- file.path(get_bdb_dir_in(), 'players.csv')
   # TODO: dob needs some fixing
   players <-
     path %>%
@@ -248,7 +251,7 @@ import_players <- memoise::memoise({function() {
 #' }
 #' @export
 import_plays <- memoise::memoise({function(drop_bad = TRUE) {
-  path <- file.path(.get_dir_in(), 'plays.csv')
+  path <- file.path(get_bdb_dir_in(), 'plays.csv')
   plays <-
     path %>%
     vroom::vroom(
@@ -274,7 +277,7 @@ import_plays <- memoise::memoise({function(drop_bad = TRUE) {
         is_defensive_pi = vroom::col_logical()
       )
     )
-  path <- file.path(.get_dir_in(), 'targetedReciever.csv')
+  path <- file.path(get_bdb_dir_in(), 'targetedReciever.csv')
   target <-
     path %>%
     vroom::vroom(
@@ -355,7 +358,7 @@ import_nflfastr_pbp <- memoise::memoise({function(season = 2018) {
 #' 
 #' @export
 import_features <- function() {
-  file.path(.get_dir_data(), 'features.parquet') %>% 
+  file.path(get_bdb_dir_data(), 'features.parquet') %>% 
   arrow::read_parquet()
 }
 
@@ -368,7 +371,7 @@ import_features <- function() {
 #' 
 #' @export
 import_new_features <- memoise::memoise({function() {
-  file.path(.get_dir_data(), 'new_features.parquet') %>% 
+  file.path(get_bdb_dir_data(), 'new_features.parquet') %>% 
     arrow::read_parquet()
 }})
 
@@ -376,7 +379,7 @@ import_new_features <- memoise::memoise({function() {
 #' 
 #' @export
 import_raw_target_probs <- function() {
-  file.path(.get_dir_data(), 'probs-tp-final-folds.parquet') %>%
+  file.path(get_bdb_dir_data(), 'probs-tp-final-folds.parquet') %>%
     arrow::read_parquet() 
 }
 
@@ -385,7 +388,7 @@ import_raw_target_probs <- function() {
 #' 
 #' @export
 import_min_dists_naive_target <- function() {
-  file.path(.get_dir_data(), 'min_dists_naive_target.parquet') %>%
+  file.path(get_bdb_dir_data(), 'min_dists_naive_target.parquet') %>%
     arrow::read_parquet() 
 }
 
@@ -394,7 +397,7 @@ import_min_dists_naive_target <- function() {
 #' 
 #' @export
 import_clean_target_probs <- function() {
-  file.path(.get_dir_data(), 'target_probs_clean.parquet') %>%
+  file.path(get_bdb_dir_data(), 'target_probs_clean.parquet') %>%
     arrow::read_parquet() 
 }
 
@@ -402,7 +405,7 @@ import_clean_target_probs <- function() {
 #' 
 #' @export
 import_target_prob_model <- memoise::memoise({function() {
-  file.path(.get_dir_data(), 'fit-tp-final.rds') %>% 
+  file.path(get_bdb_dir_data(), 'fit-tp-final.rds') %>% 
     readr::read_rds()
 }})
 
