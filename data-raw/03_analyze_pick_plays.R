@@ -67,7 +67,6 @@ pick_play_meta_init <-
   select(-week)
 pick_play_meta_init
 
-
 plays_w_pick_info <-
   plays %>%
   left_join(
@@ -376,96 +375,214 @@ features_lag <-
   distinct()
 features_lag
 
-# Taking the one non-snap frame of each play
+# Taking the 1 non-snap frame of each play
 pick_features <-
   features_lag %>% 
   filter(sec > 0) %>% 
   # `had_intersect` is redundant with `has_intersect` if there is only one frame per play and it's the last frame.
   select(-had_intersect)
 
-pick_features_target_long <-
-  pick_features %>% 
-  filter(nfl_id_target == nfl_id) %>% 
-  select(has_same_init_defender, has_intersect, matches('^[ew]pa')) %>% 
+# t test method 1 ----
+pick_features_pretty <-
+  pick_features %>%
+  filter(nfl_id_target == nfl_id) %>%
+  mutate(
+    across(
+      has_same_init_defender, ~sprintf('Has Same Initial Defender? = %s', ifelse(.x, 'Y', 'N'))
+    ),
+    across(
+      has_intersect, ~sprintf('Is Pick Combo? = %s', ifelse(.x, 'Y', 'N'))
+    )
+  ) %>%
+  select(has_same_init_defender, has_intersect, matches('^[ew]pa'))
+pick_features_pretty
+
+# save_t_test <- function(what = c('same_init_defender', 'intersect')) {
+#   what <- match.arg(what)
+#   what_other <- switch(what, same_init_defender = 'intersect', intersect = 'same_init_defender')
+#   col <- what %>% sprintf('has_%s', .)
+#   col_other <- what_other %>% sprintf('has_%s', .)
+#   col_sym <- col %>% sym()
+#   col_other_sym <- col_other %>% sym()
+# 
+#   t_test <-
+#     pick_features_pretty %>% 
+#     dplyr::select(-!!col_other_sym) %>% 
+#     tidyr::drop_na() %>% 
+#     gtsummary::tbl_summary(
+#       by = !!col_sym
+#     ) %>%
+#     gtsummary::add_p(
+#       test = gtsummary::all_continuous() ~ 't.test',
+#       pvalue_fun = function(x) gtsummary::style_pvalue(x, digits = 2)
+#     )
+#   res <-
+#     t_test %>% 
+#     gtsummary::as_gt() %>% 
+#     gt::gtsave(filename = file.path(.get_dir_figs(), sprintf('t_test_%s.png', what)))
+#   t_test
+# }
+# 
+# save_t_test('same_init_defender')
+# save_t_test('intersect')
+
+# t-test method 2 (best) ----
+save_new_t_test <- function(what = c('same_init_defender', 'intersect'), cnd = dplyr::quos(TRUE), suffix = NULL, sep = '_') {
+  what <- match.arg(what)
+  what_other <- 
+    switch(
+      what, 
+      same_init_defender = 'intersect', 
+      intersect = 'same_init_defender'
+    )
+  what_other_pretty <- 
+    switch(
+      what_other, 
+      same_init_defender = 'Has Same Initial Defender?', 
+      intersect = 'Is Pick Route Combo?'
+    )
+  col <- what %>% sprintf('has_%s', .)
+  col_other <- what_other %>% sprintf('has_%s', .)
+  col_sym <- col %>% sym()
+  col_other_sym <- col_other %>% sym()
+  # This is hacky but whatever. tbl_summary is not taking symbols
+  lab <- list(temp = what_other_pretty)
+  names(lab) <- col_other
+  t_test <-
+    pick_features_pretty %>% 
+    dplyr::filter(!!!cnd) %>% 
+    tidyr::drop_na() %>% 
+    dplyr::mutate(
+      dplyr::across(!!col_other_sym, ~stringr::str_replace_all(.x, '(^.*)([YN]$)', '\\2'))
+    ) %>% 
+    gtsummary::tbl_summary(
+      statistic = list(
+        # gtsummary::all_continuous() ~ '{mean} ({sd})',
+        gtsummary::all_categorical() ~ '{n} / {N} ({p}%)'
+      ),
+      # label = !!col_other_sym ~ .what_other_pretty,
+      label = lab,
+      by = !!col_sym
+    ) %>%
+    gtsummary::add_p(
+      test = gtsummary::all_continuous() ~ 't.test',
+      pvalue_fun = function(x) gtsummary::style_pvalue(x, digits = 2)
+    )
+  t_test
+  
+  if(is.null(suffix)) {
+    suffix <- ''
+  } else {
+    suffix <- sprintf('%s%s', sep, suffix)
+  }
+  res <-
+    t_test %>% 
+    gtsummary::as_gt() %>% 
+    gt::gtsave(filename = file.path(.get_dir_figs(), sprintf('new_t_test_%s%s.png', what, suffix)))
+  t_test
+}
+
+save_new_t_test('same_init_defender')
+save_new_t_test(
+  'same_init_defender',
+  cnd = dplyr::quos(.data$has_intersect %>% str_detect('N$')), 
+  suffix = 'wo_intersect'
+)
+save_new_t_test(
+  'same_init_defender',
+  cnd = dplyr::quos(.data$has_intersect %>% str_detect('Y$')), 
+  suffix = 'w_intersect'
+)
+save_new_t_test('intersect')
+save_new_t_test(
+  'intersect', 
+  cnd = dplyr::quos(.data$has_same_init_defender %>% str_detect('N$')),
+  suffix = 'w_same_defender'
+)
+save_new_t_test(
+  'intersect', 
+  cnd = dplyr::quos(.data$has_same_init_defender %>% str_detect('Y$')),
+  suffix = 'w_diff_defender'
+)
+
+# t-test method 3 ----
+# pick_features_target_long <-
+#   pick_features %>% 
+#   filter(nfl_id_target == nfl_id) %>% 
+#   select(has_same_init_defender, has_intersect, matches('^[ew]pa')) %>% 
+#   pivot_longer(
+#     matches('^[ew]pa'),
+#     names_to = 'stat',
+#     values_to = 'value'
+#   ) %>% 
+#   group_nest(has_same_init_defender, has_intersect, stat) %>% 
+#   mutate(
+#     across(has_intersect, ~if_else(.x, 'has_intersect', 'not_has_intersect')),
+#     across(has_same_init_defender, ~if_else(.x, 'has_same_init_defender', 'not_has_same_init_defender'))
+#   )
+# pick_features_target_long
+# 
+# do_t_test <- function(col1, col2 = sprintf('not_%s', col1)) {
+#   col1_sym <- col1 %>% sym()
+#   col2_sym <- col2 %>% sym()
+#   pick_features_target_long %>% 
+#     pivot_wider(
+#       names_from = !!col1_sym,
+#       values_from = data
+#     ) %>% 
+#     mutate(
+#       t_test = map2(!!col1_sym, !!col2_sym, ~t.test(..1$value, ..2$value) %>% broom::tidy()),
+#       !!col1_sym := map_int(!!col1_sym, nrow),
+#       !!col2_sym := map_int(!!col2_sym, nrow)
+#     ) %>% 
+#     unnest(cols = c(t_test))
+# }
+# 
+# pick_init_defender_t_test <- do_t_test('has_same_init_defender')
+# pick_init_defender_t_test
+# pick_intersect_t_test <- do_t_test('has_intersect')
+# pick_intersect_t_test
+
+# t test vizzing ----
+pick_play_t_test_trunc <-
+  pick_features_pretty %>% 
   pivot_longer(
     matches('^[ew]pa'),
     names_to = 'stat',
     values_to = 'value'
   ) %>% 
-  group_nest(has_same_init_defender, has_intersect, stat) %>% 
   mutate(
-    across(has_intersect, ~if_else(.x, 'has_intersect', 'not_has_intersect')),
-    across(has_same_init_defender, ~if_else(.x, 'has_same_init_defender', 'not_has_same_init_defender'))
+    across(
+      value,
+      ~case_when(
+        str_detect(stat, 'epa') & .x < -2 ~ -2,
+        str_detect(stat, 'epa') & .x > 2 ~ 2,
+        stat == 'wpa_nflfastr' & .x < -0.1 ~ -0.1,
+        stat == 'wpa_nflfastr' & .x > 0.1 ~ 0.1,
+        TRUE ~ .x
+      )
+    )
   )
-pick_features_target_long
-
-do_t_test <- function(col1, col2 = sprintf('not_%s', col1)) {
-  col1_sym <- col1 %>% sym()
-  col2_sym <- col2 %>% sym()
-  pick_features_target_long %>% 
-    pivot_wider(
-      names_from = !!col1_sym,
-      values_from = data
-    ) %>% 
-    mutate(
-      t_test = map2(!!col1_sym, !!col2_sym, ~t.test(..1$value, ..2$value) %>% broom::tidy()),
-      !!col1_sym := map_int(!!col1_sym, nrow),
-      !!col2_sym := map_int(!!col2_sym, nrow)
-    ) %>% 
-    unnest(cols = c(t_test))
-}
-pick_init_defender_t_test <- do_t_test('has_same_init_defender')
-pick_init_defender_t_test
-pick_intersect_t_test <- do_t_test('has_intersect')
-pick_intersect_t_test
-
-pick_features_target_long %>%
-  filter(has_same_init_defender == 'not_has_same_init_defender') %>%
-  filter(stat == 'epa') %>%
-  unnest(data) %>%
-  sample_frac(0.2) %>% 
-  select(has_intersect, value) %>%
-  # mutate(across(has_intersect, factor)) %>%
-  ggstatsplot:::ggbetweenstats(
-    plot.type = 'box',
-    x = has_intersect,
-    y = value
-  )
-
-# TODO: Come up with a better name for this.
-pick_play_t_test_trunc <-
-  pick_features_target_long %>% 
-  # filter(has_same_init_defender == 'not_has_same_init_defender') %>% 
-  # filter(stat == 'epa') %>% 
-  unnest(data) # %>% 
-  # mutate(
-  #   across(
-  #     value,
-  #     ~case_when(
-  #       str_detect(stat, 'epa') & .x < -2 ~ -2,
-  #       str_detect(stat, 'epa') & .x > 2 ~ 2,
-  #       stat == 'wpa_nflfastr' & .x < -0.1 ~ -0.1,
-  #       stat == 'wpa_nflfastr' & .x > 0.1 ~ 0.1,
-  #       TRUE ~ .x
-  #     )
-  #   )
-  # )
 pick_play_t_test_trunc
 
-pick_play_t_test_trunc %>% 
-  sample_frac(0.2) %>% 
-  ggplot() +
-  aes(y = has_intersect, x = value) +
-  geom_boxplot(
-    aes(color = has_intersect),
-    alpha = 0.2
-  ) +
-  facet_wrap(stat ~ has_same_init_defender, scales = 'free', ncol = 2, nrow = 3)
+# pick_play_t_test_trunc %>% 
+#   sample_frac(0.2) %>% 
+#   ggplot() +
+#   aes(y = has_intersect, x = value) +
+#   geom_boxplot(
+#     aes(color = has_intersect),
+#     alpha = 0.2
+#   ) +
+#   facet_wrap(stat ~ has_same_init_defender, scales = 'free', ncol = 2, nrow = 3)
 
+# Skipping this for now since it crashes the session when the script is sourced.
+if(FALSE) {
 set.seed(42)
+# theme_set_and_update_bdb()
 viz_t_test <-
   pick_play_t_test_trunc %>% 
-  sample_frac(0.2) %>% 
+  drop_na() %>% 
+  # sample_frac(0.1) %>% 
   ggplot() +
   aes(y = has_intersect, x = value) +
   ggbeeswarm::geom_quasirandom(
@@ -473,42 +590,49 @@ viz_t_test <-
     groupOnX = FALSE,
     alpha = 0.2
   ) +
-  facet_wrap(stat ~ has_same_init_defender, scales = 'free', ncol = 2, nrow = 3) +
-  scale_color_manual(
-    values = c(has_intersect = 'red', not_has_intersect = 'blue'),
-    labels = c(has_intersect = 'Is Pick', not_has_intersect = 'Not A Pick')
+  geom_vline(
+    data =
+      pick_play_t_test_trunc %>% 
+      drop_na() %>% 
+      group_by(has_intersect, has_same_init_defender, stat) %>% 
+      summarize(
+        across(value, median)
+      ) %>% 
+      ungroup(),
+    aes(color = has_intersect, xintercept = value, group = has_intersect),
+    size = 1.5
   ) +
-  guides(color = guide_legend('')) +
+  facet_wrap(has_same_init_defender ~ stat, scales = 'free', ncol = 2, nrow = 3, dir = 'v') +
+  # scale_color_manual(
+  #   values = c('Is Pick Combo? Y' = 'blue', 'Is Pick Combo? N' = 'grey50')
+  # ) +
+  guides(color = guide_legend('', override.aes = list(size = 3, alpha = 1))) +
   theme(
+    strip.text.x = element_text(hjust = 0, size = 14),
     legend.position = 'top',
+    plot.caption = element_text(size = 10),
     axis.text.y = element_blank()
   ) +
   labs(
+    title = 'Distributions By Initial Defender and Pick Route Combo',
+    caption = 'Medians annotated with vertical lines. Extreme values truncated.',
     x = NULL, y = NULL
   )
 viz_t_test
 do_save_plot(viz_t_test)
+}
 
-ggridges::geom_density_ridges(
-    # aes(), 
-    # stat = 'binline',
-    # binwidth = 1,
-    scale = 0.9, 
-    show.legend = FALSE
-  )
-
-# example viz data ----
+# example vizzes ----
 # jersey_numbers <-
 #   players_from_tracking %>%
 #   distinct(game_id, nfl_id, display_name, position, jersey_number)
-pick_play_meta_init
-pick_features
 
 # TODO: Thinking that I need something like pick_plays, but accounting for all receivers in order to actually compare pick plays man defense vs. non-pick plays man defense instead of just pick play man defense vs. zone defense. This is somewhat accomplished by `pick_features`, but not completely
 # pick_features already has all columns in pick_play_init
 all_plays <-
-  pick_features %>% 
-  select(-had_intersect)
+  pick_features %>%
+  # This is the last second measured on the play.
+  select(-sec) %>% 
   left_join(
     players_from_tracking,
     by = c('game_id', 'play_id', 'nfl_id')
@@ -527,6 +651,10 @@ all_plays <-
     across(c(nfl_id_target, jersey_number), ~coalesce(.x, -1L)),
     across(c(display_name, position), ~coalesce(.x, '?'))
   ) %>%
+  mutate(
+    is_target = if_else(nfl_id == nfl_id_target, TRUE, FALSE),
+    target_is_intersect = sum(nfl_id_target == nfl_id)
+  ) %>% 
   left_join(
     routes,
     by = c('game_id', 'play_id', 'nfl_id')
@@ -547,92 +675,93 @@ all_plays <-
     by = c('game_id', 'play_id', 'nfl_id_d_robust_init')
   )
 all_plays
-all_lays
 
-pick_plays <-
-  pick_play_meta_init %>%
-  # Now get `epa` numbers from `plays`.
-  inner_join(
-    plays %>%
-      select(
-        game_id,
-        play_id,
-        pass_result,
-        epa,
-        nfl_id_target = target_nfl_id
-      ),
-    by = c('game_id', 'play_id')
-  ) %>% 
-  left_join(
-    pbp %>%
-      select(game_id, play_id, wpa_nflfastr = wpa, epa_nflfastr = epa),
-    by = c('game_id', 'play_id')
-  ) %>%
-  left_join(
-    players_from_tracking,
-    by = c('game_id', 'play_id', 'nfl_id')
-  ) %>%
-  left_join(
-    players_from_tracking %>%
-      rename_with(~sprintf('%s_intersect', .x), c(nfl_id, display_name, jersey_number, position)),
-    by = c('game_id', 'play_id', 'nfl_id_intersect')
-  ) %>%
-  left_join(
-    players_from_tracking %>%
-      rename_with(~sprintf('%s_target', .x), c(nfl_id, display_name, jersey_number, position)),
-    by = c('game_id', 'play_id', 'nfl_id_target')
-  ) %>%
-  mutate(
-    across(c(nfl_id_target, jersey_number), ~coalesce(.x, -1L)),
-    across(c(display_name, position), ~coalesce(.x, '?'))
-  ) %>%
-  left_join(
-    routes,
-    by = c('game_id', 'play_id', 'nfl_id')
-  ) %>%
-  left_join(
-    routes %>%
-      rename_with(~sprintf('%s_intersect', .x), c(nfl_id, route)),
-    by = c('game_id', 'play_id', 'nfl_id_intersect')
-  ) %>%
-  # There are 2 plays that don't match up. Just drop them with the inner_join
-  inner_join(
-    pick_features %>%
-      select(
-        game_id,
-        play_id,
-        nfl_id,
-        nfl_id_intersect,
-        nfl_id_d_robust,
-        nfl_id_d_robust_init,
-        is_lo,
-        sec = sec_intersect,
-        has_same_init_defender,
-        def_had_intersect = had_intersect # This is more useful if we were comparing to all plays, but it's just always TRUE for pick plays
-      )
-  ) %>%
-  left_join(
-    players_from_tracking %>% 
-      rename_with(~sprintf('%s_d_robust', .x), c(nfl_id, display_name, jersey_number, position)),
-    by = c('game_id', 'play_id', 'nfl_id_d_robust')
-  ) %>%
-  left_join(
-    players_from_tracking %>% 
-      rename_with(~sprintf('%s_d_robust_init', .x), c(nfl_id, display_name, jersey_number, position)),
-    by = c('game_id', 'play_id', 'nfl_id_d_robust_init')
-  )
-pick_plays
+# # No longer need this
+# pick_plays <-
+#   pick_play_meta_init %>%
+#   # Now get `epa` numbers from `plays`.
+#   inner_join(
+#     plays %>%
+#       select(
+#         game_id,
+#         play_id,
+#         pass_result,
+#         epa,
+#         nfl_id_target = target_nfl_id
+#       ),
+#     by = c('game_id', 'play_id')
+#   ) %>%
+#   left_join(
+#     pbp %>%
+#       select(game_id, play_id, wpa_nflfastr = wpa, epa_nflfastr = epa),
+#     by = c('game_id', 'play_id')
+#   ) %>%
+#   left_join(
+#     players_from_tracking,
+#     by = c('game_id', 'play_id', 'nfl_id')
+#   ) %>%
+#   left_join(
+#     players_from_tracking %>%
+#       rename_with(~sprintf('%s_intersect', .x), c(nfl_id, display_name, jersey_number, position)),
+#     by = c('game_id', 'play_id', 'nfl_id_intersect')
+#   ) %>%
+#   left_join(
+#     players_from_tracking %>%
+#       rename_with(~sprintf('%s_target', .x), c(nfl_id, display_name, jersey_number, position)),
+#     by = c('game_id', 'play_id', 'nfl_id_target')
+#   ) %>%
+#   mutate(
+#     across(c(nfl_id_target, jersey_number), ~coalesce(.x, -1L)),
+#     across(c(display_name, position), ~coalesce(.x, '?'))
+#   ) %>%
+#   left_join(
+#     routes,
+#     by = c('game_id', 'play_id', 'nfl_id')
+#   ) %>%
+#   left_join(
+#     routes %>%
+#       rename_with(~sprintf('%s_intersect', .x), c(nfl_id, route)),
+#     by = c('game_id', 'play_id', 'nfl_id_intersect')
+#   ) %>%
+#   # There are 2 plays that don't match up. Just drop them with the inner_join
+#   inner_join(
+#     pick_features %>%
+#       select(
+#         game_id,
+#         play_id,
+#         nfl_id,
+#         nfl_id_intersect,
+#         nfl_id_d_robust,
+#         nfl_id_d_robust_init,
+#         is_lo,
+#         sec = sec_intersect,
+#         has_same_init_defender,
+#         has_intersect = has_intersect # This is more useful if we were comparing to all plays, but it's just always TRUE for pick plays
+#       )
+#   ) %>%
+#   left_join(
+#     players_from_tracking %>%
+#       rename_with(~sprintf('%s_d_robust', .x), c(nfl_id, display_name, jersey_number, position)),
+#     by = c('game_id', 'play_id', 'nfl_id_d_robust')
+#   ) %>%
+#   left_join(
+#     players_from_tracking %>%
+#       rename_with(~sprintf('%s_d_robust_init', .x), c(nfl_id, display_name, jersey_number, position)),
+#     by = c('game_id', 'play_id', 'nfl_id_d_robust_init')
+#   )
+# pick_plays
+# pick_plays %>% count(sec)
+# 
+# all_plays %>% 
+#   count(has_intersect, nfl_id_d_robust, display_name_d_robust, sort = TRUE)
+# 
+# all_plays %>% 
+#   count(has_intersect, nfl_id_d_robust_init, display_name_d_robust_init, sort = TRUE)
 
-pick_plays %>% 
-  count(nfl_id_d_robust, display_name_d_robust, sort = TRUE)
-
-pick_plays %>% 
-  count(nfl_id_d_robust_init, display_name_d_robust_init, sort = TRUE)
-
-pick_plays_by_receiver <-
-  pick_plays %>% 
-  count(nfl_id, display_name, is_lo, sort = TRUE)
-pick_plays_by_receiver
+all_plays_by_receiver <-
+  all_plays %>% 
+  count(has_intersect, nfl_id, display_name, is_lo, sort = TRUE)
+all_plays_by_receiver
 
 plot_picks_by_receiver <- function(data) {
   data %>%
@@ -668,23 +797,34 @@ plot_picks_by_receiver <- function(data) {
     )
 }
 
+all_plays_by_receiver %>% 
+  group_by(nfl_id, display_name) %>% 
+  mutate(
+    total = sum(n),
+    frac_intersect = n / total
+  ) %>% 
+  filter(has_intersect) %>% 
+  filter(total > 100) %>% 
+  arrange(-frac_intersect)
+
 viz_picks_by_receiver <-
-  pick_plays_by_receiver %>%
+  all_plays_by_receiver %>%
   plot_picks_by_receiver() +
   labs(
     title = '# of Pick Route Combinations Involved With'
   )
 do_save_plot(viz_picks_by_receiver)
 
-pick_plays_by_receiver_target <-
-  pick_plays %>% 
+all_plays_by_receiver_target <-
+  all_plays %>% 
   # Drop the NA target rows.
   filter(!is.na(display_name_target)) %>% 
-  count(nfl_id = nfl_id_target, display_name = display_name_target, is_lo, sort = TRUE)
-pick_plays_by_receiver_target
+  count(has_intersect, nfl_id = nfl_id_target, display_name = display_name_target, is_lo, sort = TRUE)
+all_plays_by_receiver_target
 
 viz_picks_by_receiver_target <-
-  pick_plays_by_receiver_target %>%
+  all_plays_by_receiver_target %>%
+  filter(has_intersect) %>% 
   plot_picks_by_receiver() +
   labs(
     title = '# of targets When Involved In Pick Route Combination'
@@ -692,6 +832,7 @@ viz_picks_by_receiver_target <-
 viz_picks_by_receiver_target
 do_save_plot(viz_picks_by_receiver_target)
 
+# TODO
 Matching::Match(
   Y = plays_w_pick_info$epa,
   Tr = plays_w_pick_info$is_pick_play,
@@ -700,99 +841,134 @@ Matching::Match(
   estimand = 'ATT'
 )
 
-pick_plays_agg <-
-  pick_plays %>%
-  mutate(
-    pass_complete = if_else(pass_result == 'C', TRUE, FALSE),
-    across(target_is_intersect, ~.x %>% as.logical() ),
-    across(target_is_intersect, ~if_else(is.na(.x), FALSE, .x))
-  ) %>%
-  # filter(has_same_init_defender, target_is_intersect, is_lo) %>%
-  group_by(has_same_init_defender, target_is_intersect, is_lo, pass_complete) %>%
-  summarize(
-    n = n(),
-    across(c(epa, wpa_nflfastr, epa_nflfastr), mean, na.rm = TRUE)
-  ) %>%
-  ungroup() %>%
-  group_by(has_same_init_defender, target_is_intersect, is_lo) %>%
-  mutate(
-    frac = n / sum(n)
-  ) %>%
-  ungroup()
-pick_plays_agg
+pick_plays <-
+  all_plays %>%
+  filter(has_intersect) 
 
-pick_plays_agg %>% 
-  filter(pass_complete) %>% 
-  select(-frac) %>% 
-  pivot_longer(
-    -c(has_same_init_defender, target_is_intersect, is_lo, pass_complete)
-  ) %>% 
-  ggplot() +
-  aes(x = has_same_init_defender, y = value) +
-  geom_col() +
-  facet_wrap(~name, scales = 'free')
-
-pick_plays %>% 
-  count(is_lo, target_is_intersect, has_same_init_defender)
+# pick_plays_agg <-
+#   all_plays %>%
+#   filter(has_intersect) %>% 
+#   mutate(
+#     pass_complete = if_else(pass_result == 'C', TRUE, FALSE),
+#     across(target_is_intersect, ~.x %>% as.logical() ),
+#     across(target_is_intersect, ~if_else(is.na(.x), FALSE, .x))
+#   ) %>%
+#   # filter(has_same_init_defender, target_is_intersect, is_lo) %>%
+#   group_by(has_intersect, has_same_init_defender, target_is_intersect, is_lo, pass_complete) %>%
+#   summarize(
+#     n = n(),
+#     across(c(epa, wpa_nflfastr, epa_nflfastr), mean, na.rm = TRUE)
+#   ) %>%
+#   ungroup() %>%
+#   group_by(has_same_init_defender, target_is_intersect, is_lo) %>%
+#   mutate(
+#     frac = n / sum(n)
+#   ) %>%
+#   ungroup()
+# pick_plays_agg
 
 # Pick an example play from here
-pick_play_meta_viz <-
-  pick_plays %>%
+pick_plays_meta_viz <-
+  pick_plays %>% 
   mutate(pass_complete = if_else(pass_result == 'C', TRUE, FALSE)) %>%
   filter(!is.na(target_is_intersect)) %>%
-  group_by(sec, pass_complete, is_lo, target_is_intersect, has_same_init_defender) %>%
+  group_by(sec_intersect, pass_complete, is_lo, target_is_intersect, has_same_init_defender) %>%
   mutate(prnk = percent_rank(epa)) %>%
   filter(prnk == min(prnk) | prnk == max(prnk)) %>%
   ungroup() %>%
   mutate(high_epa = if_else(prnk == 1, TRUE, FALSE)) %>%
   filter(high_epa == pass_complete) %>%
-  arrange(sec, pass_complete, is_lo, target_is_intersect) %>%
+  arrange(sec_intersect, pass_complete, is_lo, target_is_intersect) %>%
   filter(is_lo) %>%
   inner_join(plays %>% select(game_id, play_id, yards_gained = play_result)) %>% 
   mutate(
-    lab = glue::glue('Pick between {display_name} ({jersey_number}, {position}) and {display_name_intersect} ({jersey_number_intersect}, {position_intersect}) between {sec-0.5} and {sec} seconds.
+    lab = glue::glue('Pick between {display_name} ({jersey_number}, {position}) and {display_name_intersect} ({jersey_number_intersect}, {position_intersect}) between {sec_intersect-0.5} and {sec_intersect} seconds.
                      target: {display_name_target} ({jersey_number_target}, {position_target}). Play result: {pass_result}. Yards gained: {yards_gained}.
                      BDB EPA: {scales::number(epa, accuracy = 0.01)}, nflfastR EPA: {scales::number(epa_nflfastr, accuracy = 0.01)}, nflfastR WPA: {scales::number(wpa_nflfastr, accuracy = 0.01)}'),
     path = file.path(
       .get_dir_data(), 
       sprintf(
         'is_pick_play=%s-sec=%1.1f-pass_complete=%s-is_lo=%s-target_is_intersect=%s-high_epa=%s-%s-%s.png', 'Y', 
-        sec, 
+        sec_intersect, 
         ifelse(pass_complete, 'Y', 'N'), 
         ifelse(is_lo, 'Y', 'N'), 
         ifelse(target_is_intersect, 'Y', 'N'), 
         ifelse(high_epa, 'Y', 'N'), game_id, play_id)
     )
   )
-pick_play_meta_viz
+pick_plays_meta_viz
 
-example_pick_plays <-
+primary_example_pick_plays <-
   list(
-    pick_play_meta_viz %>% 
-      filter(!high_epa) %>% 
-      slice_min(epa, with_ties = FALSE) %>% 
-      mutate(descr = 'highest_epa'),
-    pick_play_meta_viz %>% 
+    pick_plays_meta_viz %>% 
       filter(high_epa) %>% 
       slice_max(epa, with_ties = FALSE) %>% 
-      mutate(descr = 'lowest_epa')
+      mutate(descr = 'highest_epa'),
+    pick_plays_meta_viz %>% 
+      filter(!high_epa) %>% 
+      slice_min(epa, with_ties = FALSE) %>% 
+      mutate(descr = 'lowest_epa'),
+    pick_plays_meta_viz %>% 
+      filter(high_epa) %>% 
+      filter(sec_intersect == min(sec_intersect)) %>% 
+      slice_max(epa, with_ties = FALSE) %>% 
+      mutate(descr = 'y_buffer')
   ) %>% 
   reduce(bind_rows) %>% 
   mutate(
     path = file.path(.get_dir_figs(), sprintf('%s_pick_play.png', descr))
   )
+primary_example_pick_plays
+
+pick_plays_meta_viz_wo_primary <-
+  pick_plays_meta_viz %>% 
+  anti_join(primary_example_pick_plays %>% select(game_id, play_id))
+
+secondary_example_pick_plays <-
+  list(
+    pick_plays_meta_viz_wo_primary %>% 
+      filter(high_epa) %>% 
+      filter(has_same_init_defender) %>% 
+      slice_max(epa, with_ties = FALSE) %>% 
+      mutate(descr = 'highest_epa_w_same_defender'),
+    pick_plays_meta_viz_wo_primary %>% 
+      filter(high_epa) %>% 
+      filter(!has_same_init_defender) %>% 
+      slice_max(epa, with_ties = FALSE) %>% 
+      mutate(descr = 'highest_epa_w_diff_defender'),
+    pick_plays_meta_viz_wo_primary %>% 
+      filter(!high_epa) %>% 
+      filter(has_same_init_defender) %>% 
+      slice_min(epa, with_ties = FALSE) %>% 
+      mutate(descr = 'lowest_epa_w_same_defender'),
+    pick_plays_meta_viz_wo_primary %>% 
+      filter(!high_epa) %>% 
+      filter(!has_same_init_defender) %>% 
+      slice_min(epa, with_ties = FALSE) %>% 
+      mutate(descr = 'lowest_epa_w_diff_defender')
+  ) %>% 
+  reduce(bind_rows) %>% 
+  mutate(
+    path = file.path(.get_dir_figs(), sprintf('%s_pick_play.png', descr))
+  )
+secondary_example_pick_plays
 
 res_viz <-
-  # pick_play_meta_viz %>%
+  # pick_plays_meta_viz %>%
   # filter(target_is_intersect & is_lo & sec >= 1 & sec <= 3) %>%
-  example_pick_plays %>% 
+  list(
+    primary_example_pick_plays,
+    secondary_example_pick_plays
+  ) %>% 
+  reduce(bind_rows) %>% 
+  # slice(3) %>% 
   mutate(
     viz = pmap(
       list(game_id, play_id, lab),
-      ~plot_play(game_id = ..1, play_id = ..2, save = FALSE) +
+      ~animate_play(game_id = ..1, play_id = ..2, save = FALSE) +
         labs(subtitle = ..3),
     ),
-    res = map2(viz, path, ~ggsave(filename = ..2, plot = ..1, unit = 'in', height = 10, width = 10))
+    res = map2(viz, path, ~ggsave(filename = ..2, plot = ..1)) # , unit = 'in', height = 10, width = 10))
   )
 
 # pick_play_agg <-
