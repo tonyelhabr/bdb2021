@@ -48,13 +48,14 @@ save_animation <-
            path = file.path(dir, sprintf('%s.%s', file, ext)),
            renderer = gganimate::gifski_renderer(path),
            ...) {
+    # browser()
     res <-
       gganimate::animate(
         anim,
         fps = fps,
         height = height,
         width = width,
-        renderer = gganimate::gifski_renderer(path),
+        renderer = renderer,
         end_pause = end_pause,
         ...
       )
@@ -88,10 +89,15 @@ animate_play <-
            buffer = NULL,
            nearest_defender = FALSE,
            target_probability = FALSE,
+           clip = TRUE,
+           at = 'end_routes', # .get_valid_at_events(),
+           init_cnd = dplyr::quos(.data$frame_id == 1L),
            save = TRUE,
            dir = get_bdb_dir_figs(),
-           filename = sprintf('%s-%s.gif', game_id, play_id),
+           ext = 'gif',
+           filename = sprintf('%s-%s.%s', game_id, play_id, ext),
            path = file.path(dir, filename),
+           subtitle = NULL,
            # width = 10,
            # height = 10,
            end_pause = 1,
@@ -101,8 +107,7 @@ animate_play <-
            ...) {
     
     # game_id = 2018090905; play_id = 783
-    # .display_info_var('Plotting {game_id}, {play_id}.')
-    .display_info('Plotting `game_id = {game_id}`, `play_id = {play_id}`.')
+    .display_info('Animating `game_id = {game_id}`, `play_id = {play_id}`.')
     meta <- tibble::tibble(game_id = game_id, play_id = play_id)
     
     has_week <- !is.null(week)
@@ -161,14 +166,16 @@ animate_play <-
       }
     }
     
+    tracking_clipped <-
+      tracking %>%
+      clip_tracking_at_events(at = 'throw', init_cnd = dplyr::quos(.data$frame_id == 1L)) %>%
+      dplyr::arrange(game_id, play_id, nfl_id, frame_id)
+    
     if(nearest_defender) {
-      tracking_clipped <-
-        tracking %>%
-        clip_tracking_at_events(at = 'end_routes', init_cnd = dplyr::quos(.data$frame_id == 1L)) %>%
-        dplyr::arrange(game_id, play_id, nfl_id, frame_id)
 
       min_dists_nested_init <-
         tracking_clipped %>%
+        dplyr::filter(!(.data$side == 'O' & is.na(.data$route))) %>% 
         dplyr::select(
           .data$game_id,
           .data$play_id,
@@ -234,6 +241,17 @@ animate_play <-
       probs <- features_model %>% rebind_fit_probs()
     }
     
+    # This is also being clipped, but later than how min distance and target prob is clipped.
+    if(clip) {
+      tracking <-
+        tracking %>%
+        clip_tracking_at_events(
+          # init_cnd = dplyr::quos(.data$frame_id == 1L),
+          init_cnd = init_cnd,
+          at = at
+        )
+    }
+    
     line_of_scrimmage <- play$absolute_yardline_number
     play_direction <- tracking$play_direction[[1]]
     sign <- ifelse(play_direction == 'left', -1, 1)
@@ -245,6 +263,14 @@ animate_play <-
     
     nontarget_tracking <-
       tracking %>%
+      dplyr::filter(nfl_id != !!target_id)
+    
+    target_tracking_clipped <-
+      tracking_clipped %>%
+      dplyr::filter(nfl_id == !!target_id)
+    
+    nontarget_tracking_clipped <-
+      tracking_clipped %>%
       dplyr::filter(nfl_id != !!target_id)
     
     ball <-
@@ -312,7 +338,7 @@ animate_play <-
     }
     
     p <-
-      tracking %>%
+      # tracking %>%
       ggplot2::ggplot() +
       gg_field(
         yardmin = yardmin,
@@ -344,10 +370,10 @@ animate_play <-
         color = 'brown'
       ) +
       ggplot2::geom_path(
-        data = nontarget_tracking %>% dplyr::select(-.data$frame_id),
+        data = nontarget_tracking_clipped %>% dplyr::select(-.data$frame_id),
         ggplot2::aes(color = side, group = nfl_id),
         size = 1,
-        alpha = 0.5,
+        alpha = 0.2,
         show.legend = FALSE
       ) +
       ggplot2::geom_text(
@@ -363,10 +389,10 @@ animate_play <-
       p <-
         p +
         ggplot2::geom_path(
-          data = target_tracking %>% dplyr::select(-.data$frame_id),
+          data = target_tracking_clipped %>% dplyr::select(-.data$frame_id),
           ggplot2::aes(color = side),
           size = 2,
-          alpha = 0.5,
+          alpha = 0.2,
           show.legend = FALSE
         ) +
         ggplot2::geom_text(
@@ -385,7 +411,7 @@ animate_play <-
           data = min_dists_robust,
           inherit.aes = FALSE,
           ggplot2::aes(x = x_o, y = y_o, xend = x_d, yend = y_d),
-          color = 'grey50'
+          color = 'black'
         )
     }
     
@@ -397,6 +423,7 @@ animate_play <-
     p <-
       p +
       ggplot2::theme(
+        # ...,
         plot.title = ggtext::element_markdown(),
         plot.title.position = 'plot',
         strip.background = ggplot2::element_rect(fill = NA),
@@ -410,8 +437,8 @@ animate_play <-
         plot.caption.position = 'plot'
       ) +
       ggplot2::labs(
+        subtitle = subtitle,
         title = glue::glue("<b><span style='color:{away_color};'>{away_team}</span></b> @ <b><span style='color:{home_color};'>{home_team}</span></b>, Week {game$week}"),
-        # subtitle = '',
         caption = glue::glue('Q{play$quarter}: {play$play_description}<br />
                              Intended receiver: {target$display_name} ({target$jersey_number})<br />
                              game_id = {game$game_id}, play_id = {play$play_id}'),
@@ -429,7 +456,6 @@ animate_play <-
     
     seconds <- ball %>% nrow() %>% {. / 10}
     nframe <- (seconds + end_pause) * fps
-    
     res <- 
       save_animation(
         anim,
@@ -437,7 +463,8 @@ animate_play <-
         fps = fps,
         height = height,
         width = width,
-        renderer = gganimate::gifski_renderer(path),
+        path = path,
+        renderer = gganimate::gifski_renderer(file = path),
         end_pause = end_pause * fps
       )
   }

@@ -115,7 +115,7 @@ plays_w_pick_info <-
   ) %>%
   mutate(
     across(c(quarter, down), factor)
-  ) %>% 
+  ) %>%
   mutate(
     across(
       c(n_db, number_of_pass_rushers), 
@@ -166,6 +166,7 @@ plays_w_pick_info <-
   # ) %>% 
   # rename_with(~str_remove(.x, '_fct'), matches('_fct'))
 plays_w_pick_info
+usethis::use_data(plays_w_pick_info, overwrite = TRUE)
 
 viz_pick_play_frac <-
   plays_w_pick_info %>% 
@@ -197,17 +198,78 @@ viz_pick_play_frac <-
 viz_pick_play_frac
 do_save_plot(viz_pick_play_frac)
 
+res_match <- 
+  MatchIt::matchit(
+    fmla_pick_play_prob,
+    method = 'nearest', 
+    data = plays_w_pick_info
+  )
+matched <- res_match %>% MatchIt::match.data()
+matched
+matched %>% 
+  lm(formula(epa ~ is_pick_play), data = ., weights = 1 / distance) %>% 
+  summary()
+
+matched %>% 
+  select(distance, weights, subclass) %>% 
+  arrange(subclass)
+
+matched %>% 
+  group_by(is_pick_play) %>% 
+  select(one_of(c(col_y, cols_features))) %>% 
+  summarise(
+    across(where(is.numeric), mean, na.rm = TRUE) # ,
+    # across(where(is.factor), mode, na.rm = TRUE)
+  )
+
+plays_w_pick_info %>% 
+  group_by(n_rb, is_pick_play) %>% 
+  slice(c(1:100)) %>% 
+  ungroup()
+
+plays_w_pick_info %>% 
+  # filter(n_wr >= 2, n_wr <= 3) %>% 
+  # group_by(n_wr_fct, is_pick_play) %>% 
+  # slice(c(1:100)) %>% 
+  # ungroup() %>% 
+  select(matches('n_(rb|wr|te)_fct$'), is_pick_play) %>%  
+  # select(n_wr_fct, is_pick_play) %>% 
+  gtsummary::tbl_summary(
+    statistic = list(
+      gtsummary::all_categorical() ~ '{n} ({p}%)',
+      gtsummary::all_continuous() ~ '{median} ({p25}, {p75})'
+    ),
+    # label = lab,
+    by = is_pick_play
+  ) %>%
+  gtsummary::add_p(
+    # test = gtsummary::all_categorical() ~ 'aov',
+    test = gtsummary::all_continuous() ~ 't.test',
+    pvalue_fun = function(x) gtsummary::style_pvalue(x, digits = 2)
+  )
+
+plays_w_pick_info %>% 
+  count(n_wr_fct, is_pick_play) %>% 
+  ggplot() +
+  aes(x = n_wr_fct, y = n, color = is_pick_play) +
+  geom_point()
+
 # others: 'type_dropback', 'is_defensive_pi', 'personnel_o', 'personnel_d',  'possession_team',
 cols_d <-
   c(
     # 'defenders_in_the_box',
     # 'number_of_pass_rushers',
-    sprintf('n_%s_fct', c('rb', 'wr', 'te')), # , 'dl', 'lb', 'db')),
+    # sprintf('n_%s_fct', c('wr', 'te')), # , 'dl', 'lb', 'db')),
     'quarter',
     'down'
   )
-cols_c_i_added_nflfastr <- 'wp'
-cols_c_i_added <- c(cols_c_i_added_nflfastr, 'pre_snap_score_diff')
+
+# cols_c_i_added_nflfastr <- 'wp'
+cols_c_i_added <- 
+  c(
+    # cols_c_i_added_nflfastr, 
+    'pre_snap_score_diff'
+  )
 # don't need  'pre_snap_visitor_score' if have home and differential
 cols_c_i <-
   c(
@@ -222,27 +284,34 @@ cols_features <- c(cols_d, cols_c_i)
 col_y <- 'is_pick_play'
 fmla_pick_play_prob <-
   generate_formula(
-    intercept = TRUE,
-    # intercept = FALSE,
+    # intercept = TRUE,
+    intercept = FALSE,
     data = plays_w_pick_info, 
     y = col_y, 
     x_include = cols_features
   )
+fmla_pick_play_prob
 
 rec_pick_play_prob <-
   plays_w_pick_info %>%
-  recipes::recipe(fmla, data = .)
+  recipes::recipe(fmla_pick_play_prob, data = .) %>% 
+  recipes::step_dummy(all_of(cols_d), one_hot = TRUE)
 rec_pick_play_prob
+
+df <- rec_pick_play_prob %>% recipes::prep() %>% recipes::juice()
+fit <- df %>% glm(formula(is_pick_play ~ . + 0), data = ., family = stats::binomial)
+fit %>% summary()
 
 spec_pick_play_prob <-
   parsnip::logistic_reg(
-    mixture = tune::tune(),
-    penalty = tune::tune()
+    # mixture = 1,
+    # penalty = tune::tune()
+    # penalty = 0
   ) %>%
   parsnip::set_mode('classification') %>%
-  parsnip::set_engine('glmnet')
+  parsnip::set_engine('glm')
 
-wf_pick_play_prob_model <-
+wf_pick_play_prob <-
   workflows::workflow() %>%
   workflows::add_recipe(rec_pick_play_prob) %>%
   workflows::add_model(spec_pick_play_prob)
@@ -255,17 +324,14 @@ folds_pick_play_prob
 
 grid_params_pick_play_prob <-
   # dials::grid_regular(
-  dials::grid_max_entropy(
-    dials::mixture(),
-    # dials::finalize(dials::mtry(), trn)
-    # dials::min_n(),
-    dials::finalize(dials::penalty(), plays_w_pick_info),
-    size = 10
+  dials::grid_regular(
+    dials::penalty(),
+    levels = 10
   )
 grid_params_pick_play_prob
 
 require(yardstick)
-res_grid <-
+res_grid_pick_play_prob_model <-
   tune::tune_grid(
     spec_pick_play_prob,
     fmla_pick_play_prob,
@@ -273,40 +339,67 @@ res_grid <-
     control = tune::control_grid(verbose = TRUE),
     grid = grid_params_pick_play_prob,
   )
-res_grid
+res_grid_pick_play_prob_model
 pacman::p_unload('yardstick')
 # beepr::beep(3)
 
-metrics <- res_grid %>% tune::collect_metrics()
-metrics
-metrics %>% 
+metrics_pick_play_prob_model <- 
+  res_grid_pick_play_prob_model %>% 
+  tune::collect_metrics()
+metrics_pick_play_prob_model
+metrics_pick_play_prob_model %>% 
   # filter(.metric == 'roc_auc') %>% 
-  arrange(-mean)
+  arrange(.metric, mean)
 
-res_grid %>% tune::select_best('roc_auc')
-res_grid %>% tune::select_best('accuracy')
-fit_best <- res_grid %>% tune::select_best('roc_auc')
-fit_best
+res_grid_pick_play_prob_model %>% tune::select_best('roc_auc')
+# res_grid_pick_play_prob_model %>% tune::select_by_one_std_err(penalty, metric = 'roc_auc')
+params_pick_play_prob_model_best <- 
+  res_grid_pick_play_prob_model %>% 
+  tune::select_best(metric = 'roc_auc')
+params_pick_play_prob_model_best
 
-spec_final <- 
-  tune::finalize_model(spec_pick_play_prob, fit_best)
-spec_final
+# wf_pick_play_prob_model_final <-
+#   tune::finalize_workflow(
+#     wf_pick_play_prob_model,
+#     params_pick_play_prob_model_best
+#   )
+# 
+# fit_pick_play_prob_model_final <-
+#   wf_pick_play_prob_model_final %>% 
+#   parsnip::fit(data = plays_w_pick_info)
+# fit_pick_play_prob_model_final
 
-fit_final <- 
-  spec_final %>%
+spec_pick_play_prob_final <- 
+  tune::finalize_model(spec_pick_play_prob, params_pick_play_prob_model_best)
+spec_pick_play_prob_final
+
+fit_pick_play_prob_final <- 
+  spec_pick_play_prob_final %>%
   parsnip::fit(formula = fmla_pick_play_prob, data = plays_w_pick_info)
-fit_final
+fit_pick_play_prob_final
 
-fit_final %>% broom::tidy() %>% arrange(-estimate) %>% mutate(across(term, ~fct_reorder(.x, estimate))) %>% ggplot() + aes(y = term, x = estimate) + geom_point()
+fit_pick_play_prob_final %>% 
+  vip::vi(lambda = params_pick_play_prob_model_best$penalty) %>% 
+  mutate(
+    Importance = abs(Importance),
+    Variable = fct_reorder(Variable, Importance)
+  ) %>%
+  ggplot(aes(x = Importance, y = Variable, fill = Sign)) +
+  geom_col() +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(y = NULL)
 
 fit_pick_play_prob <-
-  parsnip::fit(wf_pick_play_prob_model, plays_w_pick_info)
-fit_pick_play_prob <- glm(fmla, data = plays_w_pick_info, family = stats::binomial)
-
+  parsnip::fit(wf_pick_play_prob, plays_w_pick_info)
+fit_pick_play_prob
+fit_pick_play_prob <- glm(fmla_pick_play_prob, data = plays_w_pick_info, family = stats::binomial)
+fit_pick_play_prob %>% summary()
 pick_plays_probs <-
-  # fit_pick_play_prob %>% 
-  fit_final %>% 
+  # fit_pick_play_prob$fit$fit$fit %>% 
+  fit_pick_play_prob %>% 
+  # fit_final %>% 
   broom::augment()
+pick_plays_probs %>% filter(down == '1')
 
 coefs_pick_play_prob <-
   fit_pick_play_prob %>%
@@ -318,6 +411,7 @@ coefs_pick_play_prob <-
     hi = estimate + 1.96 * std.error,
     is_signif = if_else(p.value < 0.05, TRUE, FALSE)
   )
+coefs_pick_play_prob
 
 viz_pick_play_prob_coefs <-
   coefs_pick_play_prob %>%
@@ -340,6 +434,17 @@ viz_pick_play_prob_coefs <-
   )
 viz_pick_play_prob_coefs
 do_save_plot(viz_pick_play_prob_coefs)
+
+
+# TODO
+Matching::Match(
+  Y = plays_w_pick_info$epa,
+  Tr = plays_w_pick_info$is_pick_play,
+  X = fitted(fit_pick_play_prob$fit$fit$fit),
+  ties = FALSE,
+  estimand = 'ATT'
+)
+
 }
 
 # analyze defense intersections ----
@@ -459,7 +564,8 @@ t_test_simple <-
   tidyr::drop_na() %>% 
   gtsummary::tbl_summary(
     statistic = list(
-      gtsummary::all_categorical() ~ '{n} ({p}%)'
+      gtsummary::all_categorical() ~ '{n} ({p}%)',
+      gtsummary::all_continuous() ~ '{median} ({p25}, {p75})'
     ),
     # label = lab,
     by = has_intersect
@@ -657,8 +763,7 @@ all_plays <-
     across(c(display_name, position), ~coalesce(.x, '?'))
   ) %>%
   mutate(
-    is_target = if_else(nfl_id == nfl_id_target, TRUE, FALSE),
-    target_is_intersect = sum(nfl_id_target == nfl_id)
+    is_target = if_else(nfl_id == nfl_id_target, TRUE, FALSE)
   ) %>% 
   left_join(
     routes,

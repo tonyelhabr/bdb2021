@@ -5,13 +5,43 @@ split <-
   plays_w_pick_info %>% 
   filter(!is.na(absolute_yardline_number)) %>% 
   rsample::initial_split(strata = all_of(col_y))
-trn <- split %>% rsample::training()
-tst <- split %>% rsample::testing()
-
+# trn <- split %>% rsample::training()
+# tst <- split %>% rsample::testing()
+trn <- plays_w_pick_info
+fmla <- fmla_pick_play_prob
 if(FALSE) {
+  rec <-
+    trn %>%
+    recipes::recipe(fmla, data = .) %>% 
+    recipes::step_dummy(quarter, down, matches('_fct$'), one_hot = TRUE)
+  rec
+  rec %>% recipes::prep() %>% recipes::juice()
+  
   spec <-
     parsnip::rand_forest(
-      trees = 500,
+      trees = 250,
+      mtry  = 6,
+      min_n = 30
+    ) %>%
+    parsnip::set_mode('classification') %>%
+    parsnip::set_engine('ranger', importance = 'permutation')
+  spec
+  
+  wf <-
+    workflows::workflow() %>%
+    workflows::add_recipe(rec) %>%
+    workflows::add_model(spec)
+  
+  fit <- parsnip::fit(wf, trn)
+  
+  fit %>% 
+    vip::vip(
+      num_features = 20
+    )
+  
+  spec <-
+    parsnip::rand_forest(
+      trees = tune::tune(),
       mtry  = tune::tune(),
       min_n = tune::tune()
     ) %>%
@@ -24,11 +54,12 @@ if(FALSE) {
   grid_params <-
     # dials::grid_regular(
     dials::grid_max_entropy(
-      dials::mtry(range = c(3, 10)),
-      # dials::finalize(dials::mtry(), trn)
-      # dials::min_n(),
-      dials::min_n(range = c(2, 50)),
-      size = 20
+      # dials::mtry(range = c(3, 10)),
+      dials::finalize(dials::trees(), trn),
+      dials::finalize(dials::mtry(), trn),
+      dials::finalize(dials::min_n(), trn),
+      # dials::min_n(range = c(2, 50)),
+      size = 10
     )
   grid_params
   
@@ -49,8 +80,10 @@ if(FALSE) {
   metrics <- res_grid %>% tune::collect_metrics()
   metrics
   metrics %>% 
-    # filter(.metric == 'roc_auc') %>% 
-    arrange(-mean)
+    arrange(.metric, -mean) %>% 
+    group_by(.metric) %>% 
+    slice(c(1:5)) %>% 
+    ungroup()
   
   res_grid %>% tune::select_best('roc_auc')
   res_grid %>% tune::select_best('accuracy')
@@ -67,7 +100,22 @@ if(FALSE) {
   
   fit_final %>% 
     # workflows::pull_workflow_fit() %>%
-    vip::vip(100)
+    vip::vi_shap(
+      feature_names = 
+      num_features = 20
+    )
+  
+  fit_final %>% 
+    # workflows::pull_workflow_fit() %>%
+    vip::vi_model(num_features = 20) %>% 
+    mutate(
+      Importance = abs(Importance),
+      Variable = fct_reorder(Variable, Importance)
+    ) %>%
+    ggplot(aes(x = Importance, y = Variable)) +
+    geom_col() +
+    scale_x_continuous(expand = c(0, 0)) +
+    labs(y = NULL)
 }
 
 spec_final <-

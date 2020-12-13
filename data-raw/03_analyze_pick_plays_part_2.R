@@ -1,10 +1,16 @@
 
 # setup ----
-# extrafont::loadfonts(device = 'win', quiet = TRUE)
 library(tidyverse)
 library(bdb2021)
-data('all_plays', pacakage = 'bdb2021')
+theme_set_and_update_bdb()
+data('all_plays', package = 'bdb2021')
 pick_plays <- all_plays %>% filter(has_intersect)
+
+do_save_plot <- function(...) {
+  if(TRUE) {
+    save_plot(...)
+  }
+}
 
 .agg_plays_by <- function(data, ...) {
   data %>% 
@@ -299,235 +305,243 @@ if(FALSE) {
 }
 
 # by receiver ----
-
-# all_plays_by_receiver <- .agg_all_plays_by(nfl_id, display_name)
-pick_plays_by_receiver <- .agg_all_plays_by(nfl_id, display_name)
-
-.n_top <- 20L
-# .plot_picks_by_reciever_layers <- function(...) {
-#   list(
-#     aes(x = ..., y = display_name),
-#     # geom_col(aes(fill = is_lo)),
-#     scale_fill_manual(values = c(`TRUE` = 'dodgerblue', `FALSE` = 'darkorange')),
-#     guides(fill = guide_legend('Is Underneath Route Runner?')),
-#     theme(
-#       panel.grid.major.y = element_blank(),
-#       legend.text = element_text(size = 12),
-#       legend.title = element_text(size = 12),
-#       legend.position = 'top'
-#     ),
-#     labs(
-#       x = '# of Plays',
-#       y = NULL
-#     )
-#   )
-# }
-viz_picks_by_receiver <-
-  pick_plays_by_receiver %>%
-  inner_join(
+if(FALSE) {
+  pick_plays_by_receiver <- .agg_pick_plays_by(nfl_id, display_name)
+  
+  .n_top <- 20L
+  viz_picks_by_receiver <-
+    pick_plays_by_receiver %>%
+    inner_join(
+      pick_plays_by_receiver %>% 
+        group_by(nfl_id, display_name) %>% 
+        summarize(total = sum(n)) %>% 
+        ungroup() %>% 
+        mutate(
+          rnk = row_number(desc(total)),
+        ) %>% 
+        filter(rnk <= .n_top)
+    ) %>% 
+    mutate(
+      across(display_name, ~fct_reorder(.x, -rnk))
+    ) %>% 
+    arrange(rnk) %>% 
+    # TODO: Replace these with above function.
+    ggplot() +
+    aes(x = n, y = display_name) +
+    geom_col(aes(fill = is_lo)) +
+    scale_fill_manual(values = c(`TRUE` = 'dodgerblue', `FALSE` = 'darkorange')) +
+    guides(fill = guide_legend('Is Underneath Route Runner?')) +
+    theme(
+      panel.grid.major.y = element_blank(),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 12),
+      legend.position = 'top'
+    ) +
+    labs(
+      title = '# of Pick Route Combinations Involved With',
+      x = '# of Plays',
+      y = NULL
+    )
+  viz_picks_by_receiver
+  do_save_plot(viz_picks_by_receiver)
+  
+  pick_plays_by_receiver_target <-
+    .agg_pick_plays_by(
+      nfl_id = nfl_id_target, 
+      display_name = display_name_target
+    ) %>% 
+    filter(!is.na(display_name)) 
+  pick_plays_by_receiver_target
+  
+  viz_picks_by_receiver_target <-
+    pick_plays_by_receiver_target %>%
+    inner_join(
+      pick_plays_by_receiver_target %>% 
+        group_by(nfl_id, display_name) %>% 
+        summarize(total = sum(n)) %>% 
+        ungroup() %>% 
+        mutate(
+          rnk = row_number(desc(total)),
+        ) %>% 
+        filter(rnk <= .n_top)
+    ) %>% 
+    mutate(
+      across(display_name, ~fct_reorder(.x, -rnk))
+    ) %>% 
+    arrange(rnk) %>% 
+    # TODO: Replace these with above function.
+    ggplot() +
+    aes(x = n, y = display_name) +
+    geom_col() +
+    theme(
+      panel.grid.major.y = element_blank(),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 12),
+      legend.position = 'top'
+    ) +
+    labs(
+      title = '# of targets When Involved In Pick Route Combination',
+      x = '# of Plays',
+      y = NULL
+    )
+  viz_picks_by_receiver_target
+  do_save_plot(viz_picks_by_receiver_target)
+  
+  all_plays_by_receiver <- .agg_all_plays_by(nfl_id, display_name)
+  pick_plays_by_receiver <-
+    all_plays_by_receiver %>% 
+    group_by(nfl_id, display_name, has_intersect) %>% 
+    summarize(
+      n = sum(n)
+    ) %>% 
+    ungroup() %>% 
+    group_by(nfl_id, display_name) %>% 
+    mutate(
+      total = sum(n),
+      frac = n / total
+    ) %>% 
+    ungroup()
+  pick_plays_by_receiver
+  
+  pick_plays_by_receiver_top <-
     pick_plays_by_receiver %>% 
-      group_by(nfl_id, display_name) %>% 
-      summarize(total = sum(n)) %>% 
-      ungroup() %>% 
-      mutate(
-        rnk = row_number(desc(total)),
-      ) %>% 
-      filter(rnk <= .n_top)
-  ) %>% 
-  mutate(
-    across(display_name, ~fct_reorder(.x, -rnk))
-  ) %>% 
-  arrange(rnk) %>% 
-  # TODO: Replace these with above function.
-  ggplot() +
-  aes(x = n, y = display_name) +
-  geom_col(aes(fill = is_lo)) +
-  scale_fill_manual(values = c(`TRUE` = 'dodgerblue', `FALSE` = 'darkorange')) +
-  guides(fill = guide_legend('Is Underneath Route Runner?')) +
-  theme(
-    panel.grid.major.y = element_blank(),
-    legend.text = element_text(size = 12),
-    legend.title = element_text(size = 12),
-    legend.position = 'top'
-  ) +
-  labs(
-    title = '# of Pick Route Combinations Involved With'
-    x = '# of Plays',
-    y = NULL
-  )
-viz_picks_by_receiver
-do_save_plot(viz_picks_by_receiver)
-
-pick_plays_by_receiver_target <-
-  .agg_pick_plays_by(
-    nfl_id = nfl_id_target, 
-    display_name = display_name_target
-  ) %>% 
-  filter(!is.na(display_name_target)) 
-pick_plays_by_receiver_target
-
-# TODO: Don't highlight is lo in this since it's not what is being ephasized.
-viz_picks_by_receiver_target <-
-  pick_plays_by_receiver_target %>%
-  inner_join(
-    pick_plays_by_receiver_target %>% 
-      group_by(nfl_id, display_name) %>% 
-      summarize(total = sum(n)) %>% 
-      ungroup() %>% 
-      mutate(
-        rnk = row_number(desc(total)),
-      ) %>% 
-      filter(rnk <= .n_top)
-  ) %>% 
-  mutate(
-    across(display_name, ~fct_reorder(.x, -rnk))
-  ) %>% 
-  arrange(rnk) %>% 
-  # TODO: Replace these with above function.
-  ggplot() +
-  aes(x = n, y = display_name) +
-  geom_col() +
-  theme(
-    panel.grid.major.y = element_blank(),
-    legend.text = element_text(size = 12),
-    legend.title = element_text(size = 12),
-    legend.position = 'top'
-  ) +
-  labs(
-    title = '# of targets When Involved In Pick Route Combination'
-    x = '# of Plays',
-    y = NULL
-  )
-viz_picks_by_receiver_target
-do_save_plot(viz_picks_by_receiver_target)
-
-pick_plays_by_receiver <-
-  all_plays_by_receiver %>% 
-  group_by(nfl_id, display_name, has_intersect) %>% 
-  summarize(
-    n = sum(n)
-  ) %>% 
-  ungroup() %>% 
-  group_by(nfl_id, display_name) %>% 
-  mutate(
-    total = sum(n),
-    frac = n / total
-  ) %>% 
-  ungroup()
-pick_plays_by_receiver
-
-viz_frac_by_receiver <-
-  pick_plays_by_receiver %>% 
-  # select(-total) %>% 
-  pivot_wider(
-    names_from = has_intersect,
-    values_from = c(n, frac)
-  ) %>% 
-  ggplot() +
-  aes(x = total, y = n_TRUE) +
-  geom_point() +
-  geom_smooth(method = 'lm', formula = formula(y ~ x + 0), se = FALSE, color = 'black', linetype = 2) +
-  geom_point(
-    data = 
-      pick_plays_by_receiver_top,
-    aes(x = total, y = n),
-    color = 'red'
-  ) +
-  ggrepel::geom_text_repel(
-    data = 
-      pick_plays_by_receiver_top,
-    aes(x = total, y = n, label = display_name),
-    family = 'Karla',
-    segment.color = 'red',
-    segment.size = 0.2,
-    color = 'red'
-  ) +
-  theme(
-    plot.caption = element_text(size = 10),
-  ) +
-  labs(
-    title = 'Relative Number of Pick Routes Ran',
-    caption = 'Players with highest ratio of pick plays annotated (minimum 200 plays).\nLinear regression fit shown as dotted line',
-    x = '# of plays',
-    y = '# of plays Involved in pick route combination'
-  )
-viz_frac_by_receiver
-save_plot(viz_frac_by_receiver)
-
-# TODO
-Matching::Match(
-  Y = plays_w_pick_info$epa,
-  Tr = plays_w_pick_info$is_pick_play,
-  X = fitted(fit_pick_play_prob$fit$fit$fit),
-  ties = FALSE,
-  estimand = 'ATT'
-)
-
-
+    filter(has_intersect) %>% 
+    filter(total > 200) %>% 
+    arrange(desc(frac)) %>% 
+    head(8)
+  
+  viz_frac_by_receiver <-
+    pick_plays_by_receiver %>% 
+    # select(-total) %>% 
+    pivot_wider(
+      names_from = has_intersect,
+      values_from = c(n, frac)
+    ) %>% 
+    ggplot() +
+    aes(x = total, y = n_TRUE) +
+    geom_abline(
+      data = tibble(slope = seq(0.05, 0.25, by = 0.05)),
+      aes(intercept = 0, slope = slope),
+      linetype = 2
+    ) +
+    # geom_text(
+    #   data = tibble(slope = seq(0.05, 0.25, by = 0.05)) %>% mutate(angle = slope * 4 * 45),
+    #   aes(x = 580, y = 580 * angle),
+    #   linetype = 2
+    # ) +
+    # coord_fixed(xlim = c(0, 650), ratio = 4) +
+    geom_point() +
+    # geom_smooth(method = 'lm', formula = formula(y ~ x + 0), se = FALSE, color = 'black', linetype = 2) +
+    geom_point(
+      data = 
+        pick_plays_by_receiver_top,
+      aes(x = total, y = n),
+      color = 'red'
+    ) +
+    ggrepel::geom_text_repel(
+      data = 
+        pick_plays_by_receiver_top,
+      aes(x = total, y = n, label = display_name),
+      family = 'Karla',
+      segment.color = 'red',
+      segment.size = 0.2,
+      color = 'red'
+    ) +
+    theme(
+      plot.caption = element_text(size = 10),
+    ) +
+    labs(
+      title = 'Relative Number of Pick Routes Ran',
+      caption = 'Players with highest ratio of pick plays annotated (minimum 200 plays).\nLinear regression fit shown as dotted line',
+      x = '# of other routes',
+      y = '# of pick routes'
+    )
+  viz_frac_by_receiver
+  save_plot(viz_frac_by_receiver)
+}
 # pick_plays_agg <-
 #   all_plays %>%
 #   filter(has_intersect) %>% 
 #   mutate(
 #     pass_complete = if_else(pass_result == 'C', TRUE, FALSE),
-#     across(target_is_intersect, ~.x %>% as.logical() ),
-#     across(target_is_intersect, ~if_else(is.na(.x), FALSE, .x))
+#     across(is_target, ~.x %>% as.logical() ),
+#     across(is_target, ~if_else(is.na(.x), FALSE, .x))
 #   ) %>%
-#   # filter(has_same_init_defender, target_is_intersect, is_lo) %>%
-#   group_by(has_intersect, has_same_init_defender, target_is_intersect, is_lo, pass_complete) %>%
+#   # filter(has_same_init_defender, is_target, is_lo) %>%
+#   group_by(has_intersect, has_same_init_defender, is_target, is_lo, pass_complete) %>%
 #   summarize(
 #     n = n(),
 #     across(c(epa, wpa_nflfastr, epa_nflfastr), mean, na.rm = TRUE)
 #   ) %>%
 #   ungroup() %>%
-#   group_by(has_same_init_defender, target_is_intersect, is_lo) %>%
+#   group_by(has_same_init_defender, is_target, is_lo) %>%
 #   mutate(
 #     frac = n / sum(n)
 #   ) %>%
 #   ungroup()
 # pick_plays_agg
+plays <- import_plays()
+
+pick_plays %>% 
+  filter(is_target)
+pick_plays %>% 
+  select(game_id, play_id, nfl_id, nfl_id_intersect, nfl_id_target, is_target) %>% 
+  filter(nfl_id_intersect == nfl_id_target)
+pick_plays %>% 
+  select(game_id, play_id, nfl_id, nfl_id_intersect, nfl_id_target, is_target) %>% 
+  filter(nfl_id == nfl_id_target)
+
+pick_plays %>% 
+  filter(nfl_id == nfl_id_intersect)
+pick_plays %>% 
+  filter(nfl_id_intersect == nfl_id_target)
 
 # Pick an example play from here
 pick_plays_meta_viz <-
   pick_plays %>% 
   mutate(pass_complete = if_else(pass_result == 'C', TRUE, FALSE)) %>%
-  filter(!is.na(target_is_intersect)) %>%
-  group_by(sec_intersect, pass_complete, is_lo, target_is_intersect, has_same_init_defender) %>%
+  filter(!is.na(is_target)) %>%
+  group_by(sec_intersect, pass_complete, is_lo, is_target, has_same_init_defender) %>%
   mutate(prnk = percent_rank(epa)) %>%
   filter(prnk == min(prnk) | prnk == max(prnk)) %>%
   ungroup() %>%
   mutate(high_epa = if_else(prnk == 1, TRUE, FALSE)) %>%
   filter(high_epa == pass_complete) %>%
-  arrange(sec_intersect, pass_complete, is_lo, target_is_intersect) %>%
+  arrange(sec_intersect, pass_complete, is_lo, is_target) %>%
   filter(is_lo) %>%
   inner_join(plays %>% select(game_id, play_id, yards_gained = play_result)) %>% 
   mutate(
-    lab = glue::glue('Pick between {display_name} ({jersey_number}, {position}) and {display_name_intersect} ({jersey_number_intersect}, {position_intersect}) between {sec_intersect-0.5} and {sec_intersect} seconds.
-                     target: {display_name_target} ({jersey_number_target}, {position_target}). Play result: {pass_result}. Yards gained: {yards_gained}.
+    lab = glue::glue('Pick between {display_name} ({jersey_number}) and {display_name_intersect} ({jersey_number_intersect}), {sec_intersect-0.5} <= t < {sec_intersect} seconds.
+                     Target: {display_name_target} ({jersey_number_target}, {position_target}). Play result: {pass_result}. Yards gained: {yards_gained}.
                      BDB EPA: {scales::number(epa, accuracy = 0.01)}, nflfastR EPA: {scales::number(epa_nflfastr, accuracy = 0.01)}, nflfastR WPA: {scales::number(wpa_nflfastr, accuracy = 0.01)}'),
     path = file.path(
       bdb2021:::get_bdb_dir_figs(), 
       sprintf(
-        'is_pick_play=%s-sec=%1.1f-pass_complete=%s-is_lo=%s-target_is_intersect=%s-high_epa=%s-%s-%s.png', 'Y', 
+        'is_pick_play=%s-sec=%1.1f-pass_complete=%s-is_lo=%s-is_target=%s-high_epa=%s-%s-%s.png', 'Y', 
         sec_intersect, 
         ifelse(pass_complete, 'Y', 'N'), 
         ifelse(is_lo, 'Y', 'N'), 
-        ifelse(target_is_intersect, 'Y', 'N'), 
+        ifelse(is_target, 'Y', 'N'), 
         ifelse(high_epa, 'Y', 'N'), game_id, play_id)
     )
   )
-pick_plays_meta_viz
+pick_plays_meta_viz$is_target
+pick_plays_meta_viz %>% select(epa, is_target, has_intersect, has_same_init_defender, lab) %>% arrange(-epa)
 
 primary_example_pick_plays <-
   list(
     pick_plays_meta_viz %>% 
+      filter(is_target) %>% 
       filter(high_epa) %>% 
       slice_max(epa, with_ties = FALSE) %>% 
       mutate(descr = 'highest_epa'),
     pick_plays_meta_viz %>% 
+      filter(is_target) %>% 
       filter(!high_epa) %>% 
       slice_min(epa, with_ties = FALSE) %>% 
       mutate(descr = 'lowest_epa'),
     pick_plays_meta_viz %>% 
+      filter(is_target) %>% 
       filter(high_epa) %>% 
       filter(sec_intersect == min(sec_intersect)) %>% 
       slice_max(epa, with_ties = FALSE) %>% 
@@ -537,7 +551,7 @@ primary_example_pick_plays <-
   mutate(
     path = file.path(dirname(path), sprintf('%s_pick_play.png', descr))
   )
-primary_example_pick_plays
+primary_example_pick_plays %>% select(descr, lab)
 
 pick_plays_meta_viz_wo_primary <-
   pick_plays_meta_viz %>% 
@@ -568,38 +582,34 @@ secondary_example_pick_plays <-
   ) %>% 
   reduce(bind_rows) %>% 
   mutate(
-    path = file.path(dirname(path), sprintf('%s_pick_play.png', descr))
+    path = file.path(dirname(path), sprintf('%s_pick_play.gif', descr))
   )
 secondary_example_pick_plays
 
 res_viz <-
-  # pick_plays_meta_viz %>%
-  # filter(target_is_intersect & is_lo & sec >= 1 & sec <= 3) %>%
+  primary_example_pick_plays %>% 
+  select(descr, game_id, play_id, lab, path) %>%
+  mutate(
+    across(path, ~.x %>% tools::file_path_sans_ext() %>% paste0('.png')),
+    viz = pmap(
+      list(game_id, play_id, lab, path),
+      ~plot_play(game_id = ..1, play_id = ..2, subtitle = ..3, plays = plays, save = TRUE, path = ..4)
+    )
+  )
+
+res_anim <-
   list(
-    primary_example_pick_plays,
+    primary_example_pick_plays %>% filter(descr != 'y_buffer'),
     secondary_example_pick_plays
   ) %>% 
   reduce(bind_rows) %>% 
-  # slice(3) %>% 
+  select(descr, game_id, play_id, lab, path) %>% 
+  tail(4) %>% 
   mutate(
-    viz = pmap(
-      list(game_id, play_id, lab),
-      ~animate_play(game_id = ..1, play_id = ..2, save = FALSE) +
-        labs(subtitle = ..3),
-    ),
-    res = map2(viz, path, ~ggsave(filename = ..2, plot = ..1)) # , unit = 'in', height = 10, width = 10))
+    across(path, ~.x %>% tools::file_path_sans_ext() %>% paste0('.gif')),
+    anim = pmap(
+      list(game_id, play_id, lab, path),
+      ~animate_play(game_id = ..1, play_id = ..2, subtitle = ..3, plays = plays, save = TRUE, path = ..4, nearest_defender = TRUE, target_probability = FALSE)
+    )
   )
 
-# pick_play_agg <-
-#   pick_plays %>%
-#   # Drop the plays where the target receiver is NA.
-#   # drop_na() %>%
-#   # filter(!is.na(target_is_intersect)) %>%
-#   mutate(across(pass_result, ~if_else(.x != 'C', 'I', .x))) %>%
-#   group_by(target_is_intersect, sec, pass_result) %>%
-#   summarize(
-#     n = n(),
-#     across(c(ends_with('_nflfastr'), epa), mean, na.rm = TRUE)
-#   ) %>%
-#   ungroup() # %>%
-# pick_play_agg

@@ -26,7 +26,7 @@ theme_set_and_update_bdb <- function(...) {
     # plot.background = element_rect(fill = '#fffaf0', color = NA),
     # plot.caption = element_text(size = 15, face = 'italic'),
     # plot.caption = element_text('Karla', size = 14, color = 'gray50', hjust = 1),
-    plot.caption = element_text('Karla', size = 14, color = 'gray20', hjust = 0),
+    plot.caption = element_text('Karla', size = 10, color = 'gray20', hjust = 0),
     plot.caption.position = 'plot',
     plot.tag = element_text('Karla', size = 12, color = 'gray20', hjust = 0), 
     # plot.tag.position = c(.01, 0.02),

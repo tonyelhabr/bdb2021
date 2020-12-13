@@ -2,44 +2,7 @@
 library(tidyverse)
 library(bdb2021)
 # data('routes', package = 'bdb2021')
-new_features <- import_new_features()
-plays <- import_plays()
-
-events_end_rush <- .get_events_end_rush()
-features_min_init <-
-  new_features %>%
-  filter(event %in% c('0.0 sec', events_end_rush)) %>%
-  select(week, game_id, play_id, event, frame_id, sec, nfl_id, nfl_id_d_robust) %>%
-  # If there are multiple of these `events_end_rush` on the same play, then just pick the first
-  group_by(game_id, play_id, nfl_id, event) %>%
-  # filter(frame_id == min(frame_id)) %>%
-  filter(row_number() == 1L) %>%
-  ungroup()
-features_min_init
-
-features_min_end_drop <-
-  features_min_init %>% 
-  filter(event %in% events_end_rush) %>% 
-  group_by(game_id, play_id, nfl_id) %>% 
-  # slice_min(frame_id, with_ties = FALSE) %>% 
-  filter(row_number(frame_id) > 1L) %>% 
-  ungroup()
-features_min_end_drop
-
-features <-
-  features_min_init %>% 
-  anti_join(features_min_end_drop)
-features
-
-features_events <-
-  features %>%
-  mutate(across(event, ~if_else(.x == '0.0 sec', 'ball_snap', .x))) %>%
-  filter(event %>% str_detect('sec$', negate = TRUE)) %>%
-  distinct(game_id, play_id, event, frame_id) %>%
-  group_by(game_id, play_id, event) %>%
-  filter(frame_id == min(frame_id)) %>%
-  ungroup()
-features_events
+features <- import_new_features()
 
 snap_frames <-
   features %>%
@@ -49,12 +12,8 @@ snap_frames <-
   select(game_id, play_id, frame_id)
 snap_frames
 
-# snap_frames %>% 
-#   distinct(game_id, play_id) %>% 
-#   anti_join(plays %>% select(game_id, play_id, play_description))
-
-features_wide <-
-  new_features %>%
+features_filt <-
+  features %>%
   semi_join(snap_frames) %>% 
   # count(game_id, play_id, frame_id, nfl_id) %>%
   # distinct(game_id, play_id, frame_id, nfl_id, .keep_all = TRUE) %>%
@@ -63,7 +22,7 @@ features_wide <-
   filter(rn == min(rn)) %>%
   ungroup() %>% 
   select(-rn)
-features_wide
+features_filt
 
 cols_id <-
   c(
@@ -79,12 +38,13 @@ cols_id_model <-
 cols_static <-
   c(
     cols_id,
-    cols_id_model
+    cols_id_model,
+    'nfl_id_target'
   )
 cols_pivot_name <- 'idx_o'
 cols_pivot_value <-
   c(
-    'x', 'y', 'dist_ball'
+    'x', 'dist_ball', 'dist_d1_naive'
   )
 cols_keep <-
   c(
@@ -94,79 +54,220 @@ cols_keep <-
   )
 cols_keep
 
+# The big difference here compared to the target prob stuff is that we don't fill in for NA routes.
 features_wide <-
-  features_wide %>%
+  features_filt %>%
   # Only a few plays like this
   filter(!is.na(idx_o)) %>% 
-  # left_join(
-  #   routes,
-  #   by = c('game_id', 'play_id', 'nfl_id')# 
-  # ) %>%
-  # mutate(
-  #   across(c(cols_pivot_value), ~case_when(is.na(route) ~ 9999, TRUE ~ .x))
-  # ) %>% 
   arrange(game_id, play_id, frame_id, idx_o) %>% 
   filter(idx_o <= 5L) %>% 
   select(any_of(cols_keep)) %>%
   pivot_wider(
     names_from = all_of(cols_pivot_name),
-    # values_from = setdiff(nms, cols_keep)
     values_from = all_of(cols_pivot_value)
-    # values_from = cols_features
   ) %>%
   mutate(idx = row_number()) %>%
   mutate(
     across(where(is.integer), ~case_when(is.na(.x) ~ -1L, TRUE ~ .x)),
     across(where(is.double), ~case_when(is.na(.x) ~ 9999, TRUE ~ .x))
   ) %>% 
-  relocate(idx)
-features_wide
-
-features_w_pick_ind <-
-  features_wide %>% 
+  relocate(idx) %>% 
   left_join(
-    pick_plays %>% 
-      distinct(game_id, play_id) %>% 
-      mutate(has_intersect = TRUE)
-  ) %>% 
-  mutate(across(has_intersect, ~coalesce(.x, FALSE))) %>% # %>% as.integer() %>% factor())) %>% 
-  inner_join(
-    plays %>% 
-      select(game_id, play_id, epa)
-  )
-features_w_pick_ind
+    plays_w_pick_info
+  ) %>%
+  filter(!is.na(is_pick_play))
+features_wide$targe
 
-fmla <-
+features_wide %>% 
+  filter(is_pick_play == '1') %>% 
+  rename(nfl_id_target = target_nfl_id) %>% 
+  mutate(
+    is_target = if_else(nfl_id == nfl_id_target, TRUE, FALSE)
+  )
+
+min_dists_naive_target <- import_min_dists_naive_target()
+min_dists <-
+  import_min_dists_naive_target() %>%
+  select(game_id, play_id, frame_id, event, idx_o, nfl_id, nfl_id_d, dist_d) %>%
+  group_by(game_id, play_id, frame_id, event, idx_o, nfl_id) %>%
+  # Inverse distance weighting. Using the squared power is sort of an arbitrary choice. One could use whatever power seems reasonable.
+  mutate(
+    dist_d_total_o = sum(1 / dist_o^2),
+    wt_o = (1 / dist_d^2) / dist_d_total_o
+  ) %>%
+  ungroup() %>%
+  group_by(game_id, play_id, frame_id, event, nfl_id_d) %>%
+  # Inverse distance weighting. Using the squared power is sort of an arbitrary choice. One could use whatever power seems reasonable.
+  mutate(
+    dist_d_total_d = sum(1 / dist_d^2),
+    wt_d = (1 / dist_d^2) / dist_d_total_d
+  ) %>%
+  ungroup()
+min_dists
+
+# others: 'type_dropback', 'is_defensive_pi', 'personnel_o', 'personnel_d',  'possession_team',
+cols_d <-
+  c(
+    # 'defenders_in_the_box',
+    # 'number_of_pass_rushers',
+    sprintf('n_%s_fct', c('wr', 'te')), # , 'dl', 'lb', 'db')),
+    'quarter',
+    'down'
+  )
+
+# cols_c_i_added_nflfastr <- 'wp'
+cols_c_i_added <- 
+  c(
+    # cols_c_i_added_nflfastr, 
+    sprintf('x_%d', 1:5),
+    sprintf('dist_ball_%d', 1:5),
+    sprintf('dist_d1_naive_%d', 1:5),
+    'pre_snap_score_diff'
+  )
+
+# don't need  'pre_snap_visitor_score' if have home and differential
+cols_c_i <-
+  c(
+    cols_c_i_added,
+    # sprintf('n_%s', c('rb', 'wr', 'te')), # , 'dl', 'lb', 'db')),
+    'yards_to_go',
+    'absolute_yardline_number',
+    'pre_snap_home_score'
+  )
+cols_features <- c(cols_d, cols_c_i)
+
+col_y <- 'is_pick_play'
+fmla_pick_play_prob <-
   generate_formula(
-    data = features_w_pick_ind,
-    y = 'has_intersect',
-    x_exclude = c('week', 'game_id', 'play_id', 'frame_id', 'idx', 'epa') # , sprintf('y_%d', c(1:5)))
+    # intercept = TRUE,
+    intercept = FALSE,
+    data = features_wide, 
+    y = col_y, 
+    x_include = cols_features
   )
-fmla
-features_w_pick_ind %>% filter(is.na(epa))
+fmla_pick_play_prob
 
-fit_ind <-
-  glm(fmla, data = features_w_pick_ind, family = stats::binomial)
-fit_ind
+fit_pick_play_prob_ind <-
+  features_wide %>% 
+  glm(fmla_pick_play_prob, data = ., family = stats::binomial)
+fit_pick_play_prob_ind
 
-matchit_res <-
+res_match <-
+  Matching::Match(
+    # caliper = 0.25,
+    ties = FALSE,
+    X = fit_pick_play_prob_ind %>% fitted(),
+    # X = model.matrix(fmla, features_wide),
+    Y = features_wide[['epa']],
+    Tr = features_wide[['is_pick_play']] %>% as.integer() %>% {. - 1L}
+  )
+res_match
+
+control_match <- features_wide[res_match[['index.control']], ]
+treatment_match <- features_wide[res_match[['index.treated']], ]
+features_match <- 
+  bind_rows(
+    control_match %>% mutate(grp = 'control'), 
+    treatment_match %>% mutate(grp = 'treatment')
+  )
+features_match
+
+.str_replace_f <- function(x, i) {
+  x %>% str_replace('(^.*)_(mean|sd)$', sprintf('\\%d', i))
+}
+
+.aggregate_to_sd_diffs <- function(data) {
+  agg <-
+    data %>% 
+    # Grab the original `n_wr` instead of `n_wr_fct`.
+    select(one_of(str_remove(cols_features, '_fct')), is_pick_play) %>% 
+    mutate(
+      across(where(is.double), ~if_else(.x == 9999, NA_real_, .x)),
+      across(where(is.factor), as.integer),
+      across(is_pick_play, ~.x - 1L)
+    ) %>% 
+    group_by(is_pick_play) %>% 
+    summarise(
+      across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)
+    ) %>% 
+    ungroup() %>% 
+    pivot_longer(
+      -is_pick_play
+    ) %>% 
+    mutate(
+      across(
+        name,
+        list(
+          col = ~.str_replace_f(.x, 1),
+          stat = ~.str_replace_f(.x, 2)
+        ),
+        .names = '{fn}'
+      )
+    ) %>% 
+    select(-name)
+  
+  res <-
+    agg %>% 
+    pivot_wider(
+      names_from = c(stat, is_pick_play),
+      values_from = value
+    ) %>% 
+    mutate(sd_diff = (mean_1 - mean_0) / sd_1)
+  res
+}
+
+.toupper1 <- function(x) {
+  x <- tolower(x)
+  substr(x, 1, 1) <- toupper(substr(x, 1, 1))
+  x
+}
+
+sd_diffs <-
+  bind_rows(
+    features_wide %>% .aggregate_to_sd_diffs() %>% mutate(grp = 'before'),
+    features_match %>% .aggregate_to_sd_diffs() %>% mutate(grp = 'after')
+  ) %>% 
+  mutate(
+    across(grp, ~.x %>% .toupper1() %>% fct_inorder())
+  ) # ordered(.x, levels = sprintf('%s Matching', .x
+sd_diffs
+
+sd_diffs %>% 
+  arrange(col) %>% 
+  ggplot() +
+  aes(y = col, x = abs(sd_diff), color = grp) +
+  geom_point() +
+  geom_path(aes(group = grp))
+
+features_wide <-
+  features_wide %>% 
+  left_join(features_match %>% distinct(game_id, play_id, grp))
+features_wide %>% 
+  filter(!is.na(grp))
+
+res_matchit <-
   MatchIt::matchit(
-    X = fit_ind %>% fitted(),
-    # X = model.matrix(fmla, features_w_pick_ind),
-    Y = features_w_pick_ind$epa,
-    Tr = features_w_pick_ind$has_intersect
+    fmla_pick_play_prob,
+    method = 'nearest', 
+    data = features_wide
   )
+res_matchit
+matched_matchit <- res_matchit %>% MatchIt::match.data() %>% arrange(subclass)
+matched_matchit
+matched %>% 
+  lm(formula(epa ~ is_pick_play), data = ., weights = 1 / distance) %>% 
+  summary()
 
-match_res <-
+res_match <-
   Matching::Match(
     # X = fit_ind %>% fitted(),
     fmla
-    data = features_w_pick_ind,
+    data = features_wide,
   )
-features_w_pick_ind[match_res$index.treated, ] %>% count(has_intersect) # count(idx, sort = TRUE)
-features_w_pick_ind[match_res$index.control, ] %>% count(has_intersect)
+features_wide[res_match$index.treated, ] %>% count(has_intersect) # count(idx, sort = TRUE)
+features_wide[res_match$index.control, ] %>% count(has_intersect)
 
-features_w_pick_ind[match_res$index.control, ] %>% 
+features_wide[res_match$index.control, ] %>% 
   head(1) %>% 
   relocate(has_intersect)
   mutate(viz = map2(game_id, play_id, plot_play))

@@ -61,7 +61,7 @@ if(!final) {
             tst = tst,
             min_n = ..1,
             mtry = ..2,
-            suffix = 'tp_final_new',
+            suffix = 'target_prob_final_new',
             overwrite = FALSE
           )
         )
@@ -69,21 +69,21 @@ if(!final) {
   
   res_grid_rf %>% unnest(acc) %>% filter(.set == 'tst')
 } else {
-  stem <- 'target_prob_final_new_by_play'
+  stem <- 'target_prob_final_new'
   set.seed(42)
-  # folds <- features_model %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
+  folds <- features_model %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
   
-  # If folds is based on play ids.
-  play_ids <- features_model %>% distinct(game_id, play_id, idx_o_target)
-  folds <- play_ids %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
+  # # If folds is based on play ids.
+  # play_ids <- features_model %>% distinct(game_id, play_id, idx_o_target)
+  # folds <- play_ids %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
   
   fit_target_prob_split_fold <- function(fold, idx_fold) {
     trn <- fold %>% rsample::analysis()
     tst <- fold %>% rsample::assessment()
     
-    # If folds is based on play ids.
-    trn <- features_model %>% semi_join(trn)
-    tst <- features_model %>% semi_join(tst)
+    # # If folds is based on play ids.
+    # trn <- features_model %>% semi_join(trn)
+    # tst <- features_model %>% semi_join(tst)
     
     fit_target_prob_split_timed(
       trn = trn,
@@ -100,7 +100,6 @@ if(!final) {
     mutate(
       across(id, ~.x %>% str_remove('Fold') %>% as.integer())
     ) %>% 
-    tail(6) %>% 
     rename(idx_fold = id) %>% 
     mutate(res = map2(splits, idx_fold, fit_target_prob_split_fold))
   res_folds
@@ -108,9 +107,10 @@ if(!final) {
   probs_folds <-
     fs::dir_ls(
       get_bdb_dir_data(),
-      regexp = sprintf('%s_fold_.*parquet', stem)
+      regexp = sprintf('%s_.*parquet', stem)
     ) %>%
+    str_subset('_by_play', negate = TRUE) %>% 
     map_dfr(~arrow::read_parquet(.x))
   probs_folds
-  arrow::write_parquet(probs_folds, file.path(get_bdb_dir_data(), sprintf('%s_folds.parquet', stem))
+  arrow::write_parquet(probs_folds, file.path(get_bdb_dir_data(), sprintf('%s_folds.parquet', stem)))
 }

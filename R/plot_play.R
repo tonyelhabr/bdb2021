@@ -41,8 +41,10 @@ plot_play <-
            at = 'end_routes',
            save = TRUE,
            dir = get_bdb_dir_figs(),
-           filename = sprintf('%s-%s.png', game_id, play_id),
+           ext = 'png',
+           filename = sprintf('%s-%s.%s', game_id, play_id, ext),
            path = file.path(dir, filename),
+           subtitle = NULL,
            width = 10,
            height = 10,
            ...) {
@@ -213,7 +215,7 @@ plot_play <-
         data = nontarget_tracking_clipped,
         ggplot2::aes(color = side),
         size = 1,
-        alpha = 0.5,
+        alpha = 0.2,
         show.legend = FALSE
       )
 
@@ -225,7 +227,7 @@ plot_play <-
           data = target_tracking_clipped,
           aes(color = side),
           size = 2,
-          alpha = 0.5,
+          alpha = 0.2,
           show.legend = FALSE
         )
     }
@@ -261,6 +263,7 @@ plot_play <-
         plot.caption.position = 'plot'
       ) +
       ggplot2::labs(
+        subtitle = subtitle,
         title = glue::glue("<b><span style='color:{away_color};'>{away_team}</span></b> @ <b><span style='color:{home_color};'>{home_team}</span></b>, Week {game$week}"),
         # subtitle = '',
         caption = glue::glue('Q{play$quarter}: {play$play_description}<br />

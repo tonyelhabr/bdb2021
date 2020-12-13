@@ -27,15 +27,19 @@ Using a causal approach, accounting for play context, we come to ...
 
 > "Offensive coordinators call them rub concepts. Defensive coordinators call them illegal pick plays. Whatever you call them, they are hard to defend... offenses are designing these plays and training their receivers to essentially set screens to get their teammates wide open. Technically, it's against the rule to set a pick deliberately, but referees have a hard time judging intentions and they rarely penalize these plays". - [Ted Nguyen, USA Football, 2017](https://blogs.usafootball.com/blog/4177/rub-concepts-how-to-defend-them-and-how-offenses-can-counteract-it)
 
-To provide some motivation to the reader to read through this very long (maybe unnecessarily long) notebook, below is the pick play that resulted in the highest expected points added (EPA) of all plays in the 2018 season.
+The table below provides some evidence for the success of pick plays relative to all other passing plays, in terms of expected points added (EPA).
+
+![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/t_test_simple.png)
+
+To provide an illustration of the impact pick plays can have, below is the pick play that resulted in the highest expected points added (EPA) in the 2018 season.
 
 ![highest-epa-pick-play](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_pick_play.png)
 
-Likewise, below is the pick play that resulted in the lowest EPA.
+Likewise, below is the pick play that resulted in the lowest EPA (good for the defense).
 
 ![lowest-epa-pick-play](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/lowest_epa_pick_play.png)
 
-Just from these two extreme plays, one can get a sense for the high amount of leverage that these plays can have on game flow and, ultimately, outcome.
+Just from these two extreme plays, one can get a sense for the high amount of leverage that these plays can have on game flow and, ultimately, outcome. In the best case (for the offense), pick plays can be a great way for the offense to quickly get a receiver a good amount of separation, setting him up for lots of yards after the catch (even on quick plays). In the worst case, defenders can "jump" such routes, leading to an interception and a relatively clear path towards the opposing end zone.
 
 ## Outline
 
@@ -43,15 +47,17 @@ Just from these two extreme plays, one can get a sense for the high amount of le
 
 2.  Discuss and implement a methodology for detecting defensive schemes on pick plays.
 
-3.  Quantify the relative success pf pick route combinations from the offensive persepective, as well as the success of certain defensive coverage against it.
+3.  Quantify the relative success of pick route combinations from the offensive perspective, as well as the relative success of certain defensive coverage against them.
 
 ## Actionable Outcomes
 
-While the final evaluation is somewhat wholistic (i.e. it tries to come to a conclusion about covering pick plays in general, based on statistical aggregations across all plays), we believe that there are several actionable learning outcomes:
+While the final evaluation is somewhat wholistic, I believe that there are several actionable learning outcomes:
 
-1.  Teams could use the methodology for identifying pick route combinations for the purpose of offensive play classification (i.e. "Did the offense run a pick route?"), likely coming in the form of tagging of video analysis. Perhaps teams already do this or have a third-party do this for them, but if not, it could certainly be worthwhile for providing an clear, reproducible classification of pick plays, not subjected to the biases of human video reviewers.
+1.  Teams could use the methodology for identifying pick route combinations for the purpose of offensive play classification (i.e. "Did the offense run a pick route?"), likely coming in the form of tagging of video analysis. Perhaps teams already do this or have a third-party do this for them, but if not, it could very useful for providing clear, reproducible classification of pick plays, not subjected to the biases of human video reviewers.
 
-2.  Teams could use this analysis to supplement their evaluation of defensive schemes when covering pick route combinations, perhaps on a weekly basis (preparing for the next week's game). Likewise, they may choose to run more or less pick route combinations on offense depending on their evaluation of their opponent's ability to cover them. In particular, they could evaluate the skill of specific defenders in covering such plays. Of course, we cannot know for certain whether individual defenders were subjected to "non-optimal" defensive play calls in certain situation since we do not know the team defensive coverages for all plays (and also how teams have coached defenders to adapt in response to certain offensive actions), so this analysis is limited in that sense.
+2.  Teams could use this analysis to supplement their evaluation of defensive schemes when covering pick route combinations, perhaps on a weekly basis (preparing for the next week's game). Likewise, they may choose to run more or less pick route combinations on offense depending on their evaluation of their opponent's ability to cover them. In particular, teams could evaluate the skill of specific defenders in covering such plays. I mostly rely on Expected Points Added (EPA), which, admittedly, is probably not granular enough to tease out individual impact in a robust, reliable manner; nonetheless, the measure of skill/success---whether it be something like reduction of separation distance, change in target probability, or something else along those line---could be swapped out relatively easily. Individual evaluation is, of course, important for identifying weaknesses to target in practice sessions with existing team players, but it could also be a point of interest in recruitment of players (i.e. to identify free agents who tend to cover pick plays particularly well).
+
+I'll caveat the prospect of doing skill evaluation by noting that we do not know for certain whether individual defenders were subjected to "non-optimal" defensive play calls in certain situation since we do not know the team defensive coverages for all plays (and also how teams have coached defenders to adapt dynamically in response to certain offensive actions), so this analysis is limited in that sense.
 
 # 1. Detecting Pick Plays
 

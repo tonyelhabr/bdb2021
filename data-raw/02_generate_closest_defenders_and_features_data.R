@@ -60,10 +60,10 @@ data('personnel_and_rushers', package = 'bdb2021')
     )
 }
 
-do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_features = TRUE, overwrite_min_dists = FALSE, overwrite_min_dists_target = TRUE, ...) {
+do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_features = TRUE, overwrite_min_dists_robust = FALSE, overwrite_min_dists_target = TRUE, ...) {
 
   path_min_dists <- file.path(get_bdb_dir_data(), sprintf('min_dists_robust_week%d.parquet', week))
-  do_min_dists <- !file.exists(path_min_dists) | overwrite_min_dists
+  do_min_dists <- !file.exists(path_min_dists) | overwrite_min_dists_robust
 
   path_min_dists_target <- file.path(get_bdb_dir_data(), sprintf('min_dists_naive_target_week%d.parquet', week))
   do_min_dists_target <- !file.exists(path_min_dists_target) | overwrite_min_dists_target
@@ -84,18 +84,6 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
 
   .display_info('Generating features for week {week} at {Sys.time()}.')
   tracking <- week %>% import_tracking(standardize = FALSE)
-
-  # Some plays have 2 ball snaps?!?
-  # tracking %>% filter(game_id == 2018091605L, play_id == 2715L) %>% filter(event != 'None') %>% count(frame_id, event)
-
-  # tracking <-
-  #   tracking %>%
-  #   dplyr::semi_join(
-  #     plays %>%
-  #       dplyr::select(.data$game_id, .data$play_id),
-  #     by = c('game_id', 'play_id')
-  #   )
-
   qb <- tracking %>% dplyr::filter(position == 'QB')
   tracking <- tracking %>% dplyr::filter(position != 'QB')
 
@@ -138,9 +126,6 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
   at <- 'throw'
   tracking_clipped <- tracking %>% clip_tracking_at_events(at = at)
   tracking_at_events <- tracking %>% filter_notable_events()
-  
-  # pick_plays_wo_features %>% head(6) %>% distinct(play_id) -> play_ids
-  # tracking_at_events %>% inner_join(play_ids) %>% count(play_id)
 
   snap_frames <- tracking %>% dplyr::filter(.data$event == 'ball_snap')
 
@@ -213,25 +198,6 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
     frames_first %>%
     dplyr::count(.data$game_id, .data$play_id, .data$side)
 
-  # frames <-
-  #   frames %>%
-  #   # Get rid of the entire play.
-  #   dplyr::anti_join(
-  #     frames_first_n %>%
-  #       dplyr::filter(.data$n < 5L | .data$n > 11L),
-  #     by = c('game_id', 'play_id')
-  #   ) %>%
-  #   dplyr::anti_join(
-  #     frames_first_n %>%
-  #       dplyr::filter(.data$side == 'O') %>%
-  #       # Plays starting with less than 5 have a defensive player playing on offense.
-  #       # Plays starting with more than 5 have an offensive player playing on defense.
-  #       dplyr::filter(.data$n != 5L),
-  #     by = c('game_id', 'play_id')
-  #   )
-
-  frames <- frames
-
   frames_first_idx_o <-
     frames_first %>%
     # add_side_cols() %>%
@@ -269,28 +235,6 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
       dplyr::filter(.data$nfl_id == .data$target_nfl_id) %>%
       dplyr::select(.data$game_id, .data$play_id, idx_o_target = .data$idx_o)
     frames_target_idx_o
-    # Play with a receiver pass to a QB, which will end up having NA idx_o_target. Typically, idx_o_target is NA (along with all nfl_id's for a play) if the QB is sacked.
-    # plays %>% filter(game_id == 2018090600, play_id == 2736) %>% glimpse()
-    # frames_target %>% distinct(game_id, play_id, target_nfl_id)
-    # frames_target %>%
-    #   dplyr::filter(.data$nfl_id == .data$target_nfl_id)
-    # frames_target %>%
-    #   group_by(game_id, play_id) %>%
-    #   summarize(is_target = sum(is_target)) %>%
-    #   ungroup() %>%
-    #   filter(is_target == 0L) %>%
-    #   left_join(frames_target %>% distinct(game_id, play_id, target_nfl_id)) %>%
-    #   left_join(
-    #     players_from_tracking %>%
-    #       rename(target_nfl_id = nfl_id)
-    #   ) %>%
-    #   left_join(plays %>% select(game_id, play_id, play_description)) %>%
-    #   select(game_id, play_id, display_name, position, play_description) -> z
-
-    # frames %>%
-    #   filter(game_id == 2018090600L, play_id == 776L) %>%
-    #   filter(side == 'D') %>%
-    #   distinct(nfl_id)
 
     min_dists_nested_init <-
       frames %>%
@@ -440,6 +384,54 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
     )
 
   if(do_min_dists_target) {
+
+    min_dists_naive_od_target <-
+      frames_target %>%
+      dplyr::filter(is_target == 1L) %>%
+      dplyr::left_join(
+        frames_o,
+        by = c('game_id', 'play_id', 'nfl_id')
+      ) %>%
+      dplyr::left_join(
+        frames_d_renamed,
+        by = c('game_id', 'play_id', 'frame_id', 'event')
+      ) %>%
+      dplyr::mutate(dist_d = .dist(.data$x, .data$x_d, .data$y, .data$y_d)) %>%
+      dplyr::group_by(.data$game_id, .data$play_id, .data$frame_id, .data$event, .data$nfl_id) %>%
+      dplyr::filter(.data$dist_d == min(.data$dist_d)) %>%
+      dplyr::ungroup() %>% 
+      dplyr::left_join(
+        frames_o_renamed,
+        by = c('game_id', 'play_id', 'frame_id', 'event')
+      ) %>%
+      dplyr::mutate(dist_o = .dist(.data$x, .data$x_o, .data$y, .data$y_o)) %>%
+      dplyr::filter(.data$dist_o > 0) %>%
+      dplyr::group_by(.data$game_id, .data$play_id, .data$frame_id, .data$event, .data$nfl_id) %>%
+      dplyr::filter(.data$dist_o == min(.data$dist_o)) %>%
+      dplyr::ungroup() %>% 
+      dplyr::select(
+        .data$game_id,
+        .data$play_id,
+        .data$frame_id,
+        .data$event,
+        .data$idx_o,
+        .data$nfl_id,
+        .data$target_nfl_id,
+        .data$is_target,
+        .data$x,
+        .data$y,
+        .data$nfl_id_d,
+        .data$x_d,
+        .data$y_d,
+        .data$nfl_id_o,
+        .data$dist_d,
+        .data$x_o,
+        .data$y_o,
+        .data$dist_o
+      )
+    
+    min_dists_naive_od_target %>% arrow::write_parquet(path_min_dists_target %>% str_replace('_naive', '_naive_od'))
+    
     min_dists_naive_d_target <-
       frames_target %>%
       # dplyr::filter(is_target == 1L) %>%
@@ -554,11 +546,17 @@ do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_featur
   features
 }
 
-# weeks <- 1:17L
 weeks <- 1:17L
-features <- weeks %>% do_by_week(do_generate_features, overwrite_features = TRUE, overwrite_min_dists = TRUE, overwrite_min_dists_target = TRUE)
+# weeks <- 1
+features <-
+  weeks %>% 
+  do_by_week(
+    do_generate_features,
+    overwrite_features = FALSE,
+    overwrite_min_dists_robust = FALSE,
+    overwrite_min_dists_target = TRUE
+  )
 features
-features %>% filter(is.na(nfl_id_d_robust))
 
 features_n <-
   features %>%
@@ -574,12 +572,19 @@ new_features <-
 new_features
 arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'new_features.parquet'))
 
-
-min_dists_naive_target <-
+min_dists_naive_od_target <-
   weeks %>%
-  sprintf('min_dists_naive_target_week%d.parquet', .) %>%
+  sprintf('min_dists_naive_od_target_week%d.parquet', .) %>%
   file.path(get_bdb_dir_data(), .) %>%
   map_dfr(arrow::read_parquet)
-min_dists_naive_target
-arrow::write_parquet(min_dists_naive_target, file.path(get_bdb_dir_data(), 'min_dists_naive_target.parquet'))
+min_dists_naive_od_target
+arrow::write_parquet(min_dists_naive_od_target, file.path(get_bdb_dir_data(), 'min_dists_naive_od_target.parquet'))
+
+min_dists_naive_d_target <-
+  weeks %>%
+  sprintf('min_dists_naive_d_target_week%d.parquet', .) %>%
+  file.path(get_bdb_dir_data(), .) %>%
+  map_dfr(arrow::read_parquet)
+min_dists_naive_d_target
+arrow::write_parquet(min_dists_naive_d_target, file.path(get_bdb_dir_data(), 'min_dists_naive_target.parquet'))
 beepr::beep(3)
