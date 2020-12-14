@@ -71,14 +71,26 @@ pick_play_meta_init <-
   select(-week)
 pick_play_meta_init
 
+.f <- function(id, data) {
+  if(is.null(data)) {
+    return(0L)
+  }
+  res <- data %>% filter(nfl_id %in% id)
+  ifelse(nrow(res) > 0L, 1L, 0L)
+}
+
 plays_w_pick_info <-
   plays %>%
+  mutate(pass_complete = if_else(pass_result == 'C', 'Y', 'N') %>% ordered(levels = c('N', 'Y'))) %>% 
   left_join(
     pick_play_meta_init %>%
       # Keep the pick play to one row per play at maximum
       nest(pick_data = -c(game_id, play_id)),
     by = c('game_id', 'play_id')
   ) %>%
+  # relocate(pick_data) %>% 
+  mutate(target_is_intersect = map2_int(target_nfl_id, pick_data, ~.f(..1, ..2)) %>% factor()) %>% 
+  relocate(target_is_intersect) %>% 
   left_join(
     personnel_and_rushers %>%
       select(-rushers) %>%
@@ -87,21 +99,22 @@ plays_w_pick_info <-
     by = c('game_id', 'play_id')
   ) %>%
   mutate(
-    has_pick = map_lgl(pick_data, ~!is.null(.x)),
+    has_intersect = map_lgl(pick_data, ~!is.null(.x)),
     across(n_rusher, ~coalesce(.x, 0L)) # ,
     # # pick_data = map_if(pick_data, is.null, ~tibble())
   ) %>%
-  relocate(game_id, play_id, has_pick, pick_data) %>%
+  relocate(game_id, play_id, has_intersect, pick_data) %>%
   left_join(
     pbp %>%
-      select(game_id, play_id, yardline_100, wp_nflfastr = wp, wpa_nflfastr = wpa, epa_nflfastr = epa),
+      select(game_id, play_id, game_half, yardline_100, wp_nflfastr = wp, wpa_nflfastr = wpa, epa_nflfastr = epa) %>% 
+      mutate(across(game_half, ~case_when(.x == 'Half1' ~ 1L, TRUE ~ 2L))),
     by = c('game_id', 'play_id')
   ) %>%
   select(-pick_data) %>%
-  # mutate(across(has_pick, ~coalesce(.x, FALSE)))
+  # mutate(across(has_intersect, ~coalesce(.x, FALSE)))
   # Doing some mutations for the model fitting stuff.
   mutate(
-    across(has_pick, ~if_else(.x, '1', '0') %>% factor()),
+    across(has_intersect, ~if_else(.x, '1', '0') %>% factor()),
     pre_snap_score_diff = pre_snap_home_score - pre_snap_visitor_score
   ) %>%
   left_join(
@@ -113,7 +126,7 @@ plays_w_pick_info <-
       select(game_id, play_id, wp)
   ) %>%
   mutate(
-    across(c(quarter, down), list(fct = factor))
+    across(c(quarter, down, game_half), list(fct = factor))
   ) %>%
   mutate(
     across(
@@ -156,26 +169,19 @@ plays_w_pick_info <-
         fct_reorder(.x)
       )
     )
-  ) # %>% 
-  # select(
-  #   -one_of(
-  #     sprintf('n_%s', c('rb', 'wr', 'te', 'dl', 'lb', 'db'))
-  #   ), 
-  #   -c(number_of_pass_rushers, defenders_in_the_box)
-  # ) %>% 
-  # rename_with(~str_remove(.x, '_fct'), matches('_fct'))
+  )
 plays_w_pick_info
 usethis::use_data(plays_w_pick_info, overwrite = TRUE)
 
 viz_pick_play_frac <-
   plays_w_pick_info %>% 
-  count(tm = possession_team, has_pick) %>% 
+  count(tm = possession_team, has_intersect) %>% 
   group_by(tm) %>% 
   mutate(
     frac = n / sum(n)
   ) %>% 
   ungroup() %>% 
-  filter(has_pick == 1) %>% 
+  filter(has_intersect == 1) %>% 
   mutate(
     rnk = row_number(-frac),
     across(tm, ~fct_reorder(.x, -rnk))
@@ -206,7 +212,7 @@ res_match <-
 matched <- res_match %>% MatchIt::match.data()
 matched
 matched %>% 
-  lm(formula(epa ~ has_pick), data = ., weights = 1 / distance) %>% 
+  lm(formula(epa ~ has_intersect), data = ., weights = 1 / distance) %>% 
   summary()
 
 matched %>% 
@@ -214,7 +220,7 @@ matched %>%
   arrange(subclass)
 
 matched %>% 
-  group_by(has_pick) %>% 
+  group_by(has_intersect) %>% 
   select(one_of(c(col_y, cols_features))) %>% 
   summarise(
     across(where(is.numeric), mean, na.rm = TRUE) # ,
@@ -222,24 +228,24 @@ matched %>%
   )
 
 plays_w_pick_info %>% 
-  group_by(n_rb, has_pick) %>% 
+  group_by(n_rb, has_intersect) %>% 
   slice(c(1:100)) %>% 
   ungroup()
 
 plays_w_pick_info %>% 
   # filter(n_wr >= 2, n_wr <= 3) %>% 
-  # group_by(n_wr_fct, has_pick) %>% 
+  # group_by(n_wr_fct, has_intersect) %>% 
   # slice(c(1:100)) %>% 
   # ungroup() %>% 
-  select(matches('n_(rb|wr|te)_fct$'), has_pick) %>%  
-  # select(n_wr_fct, has_pick) %>% 
+  select(matches('n_(rb|wr|te)_fct$'), has_intersect) %>%  
+  # select(n_wr_fct, has_intersect) %>% 
   gtsummary::tbl_summary(
     statistic = list(
       gtsummary::all_categorical() ~ '{n} ({p}%)',
       gtsummary::all_continuous() ~ '{median} ({p25}, {p75})'
     ),
     # label = lab,
-    by = has_pick
+    by = has_intersect
   ) %>%
   gtsummary::add_p(
     # test = gtsummary::all_categorical() ~ 'aov',
@@ -248,9 +254,9 @@ plays_w_pick_info %>%
   )
 
 plays_w_pick_info %>% 
-  count(n_wr_fct, has_pick) %>% 
+  count(n_wr_fct, has_intersect) %>% 
   ggplot() +
-  aes(x = n_wr_fct, y = n, color = has_pick) +
+  aes(x = n_wr_fct, y = n, color = has_intersect) +
   geom_point()
 
 # others: 'type_dropback', 'is_defensive_pi', 'personnel_o', 'personnel_d',  'possession_team',
@@ -280,7 +286,7 @@ cols_c_i <-
   )
 cols_features <- c(cols_d, cols_c_i)
 
-col_y <- 'has_pick'
+col_y <- 'has_intersect'
 fmla_pick_play_prob <-
   generate_formula(
     # intercept = TRUE,
@@ -298,7 +304,7 @@ rec_pick_play_prob <-
 rec_pick_play_prob
 
 df <- rec_pick_play_prob %>% recipes::prep() %>% recipes::juice()
-fit <- df %>% glm(formula(has_pick ~ . + 0), data = ., family = stats::binomial)
+fit <- df %>% glm(formula(has_intersect ~ . + 0), data = ., family = stats::binomial)
 fit %>% summary()
 
 spec_pick_play_prob <-
@@ -438,7 +444,7 @@ do_save_plot(viz_pick_play_prob_coefs)
 # TODO
 Matching::Match(
   Y = plays_w_pick_info$epa,
-  Tr = plays_w_pick_info$has_pick,
+  Tr = plays_w_pick_info$has_intersect,
   X = fitted(fit_pick_play_prob$fit$fit$fit),
   ties = FALSE,
   estimand = 'ATT'

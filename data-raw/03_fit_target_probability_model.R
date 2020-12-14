@@ -8,7 +8,7 @@ fmla <- formula(idx_o_target ~ .)
 
 fit_target_prob_split_timed <- .time_it(fit_target_prob_split)
 
-final <- FALSE
+final <- TRUE
 if(!final) {
   nms_wide <- features_model %>% names()
   cols_lst <- retrieve_target_prob_features()
@@ -88,7 +88,7 @@ if(!final) {
       trn = trn,
       tst = tst,
       fmla = fmla,
-      min_n = 2,
+      min_n = 5,
       mtry = 39,
       suffix = sprintf('%s_%s', stem, idx_fold)
     )
@@ -100,7 +100,6 @@ if(!final) {
       across(id, ~.x %>% str_remove('Fold') %>% as.integer())
     ) %>% 
     rename(idx_fold = id) %>% 
-    tail(9) %>% 
     mutate(res = map2(splits, idx_fold, fit_target_prob_split_fold))
   res_folds
   
@@ -115,5 +114,5 @@ if(!final) {
     select(-path) %>% 
     unnest(data)
   probs_folds
-  arrow::write_parquet(probs_folds, file.path(get_bdb_dir_data(), sprintf('%s_min_n2_folds.parquet', stem)))
+  arrow::write_parquet(probs_folds, file.path(get_bdb_dir_data(), sprintf('%s_min_n5_folds.parquet', stem)))
 }
