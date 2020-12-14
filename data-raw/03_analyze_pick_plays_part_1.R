@@ -87,22 +87,21 @@ plays_w_pick_info <-
     by = c('game_id', 'play_id')
   ) %>%
   mutate(
-    is_pick_play = map_lgl(pick_data, ~!is.null(.x)),
+    has_pick = map_lgl(pick_data, ~!is.null(.x)),
     across(n_rusher, ~coalesce(.x, 0L)) # ,
     # # pick_data = map_if(pick_data, is.null, ~tibble())
   ) %>%
-  relocate(game_id, play_id, is_pick_play, pick_data) %>%
+  relocate(game_id, play_id, has_pick, pick_data) %>%
   left_join(
     pbp %>%
-      select(game_id, play_id, wp_nflfastr = wp, wpa_nflfastr = wpa, epa_nflfastr = epa),
+      select(game_id, play_id, yardline_100, wp_nflfastr = wp, wpa_nflfastr = wpa, epa_nflfastr = epa),
     by = c('game_id', 'play_id')
   ) %>%
   select(-pick_data) %>%
-  # mutate(across(is_pick_play, ~coalesce(.x, FALSE)))
+  # mutate(across(has_pick, ~coalesce(.x, FALSE)))
   # Doing some mutations for the model fitting stuff.
   mutate(
-    pick_play_type = if_else(is_pick_play, 'other_play', 'pick_play'),
-    across(is_pick_play, ~if_else(.x, '1', '0') %>% factor()),
+    across(has_pick, ~if_else(.x, '1', '0') %>% factor()),
     pre_snap_score_diff = pre_snap_home_score - pre_snap_visitor_score
   ) %>%
   left_join(
@@ -114,7 +113,7 @@ plays_w_pick_info <-
       select(game_id, play_id, wp)
   ) %>%
   mutate(
-    across(c(quarter, down), factor)
+    across(c(quarter, down), list(fct = factor))
   ) %>%
   mutate(
     across(
@@ -170,13 +169,13 @@ usethis::use_data(plays_w_pick_info, overwrite = TRUE)
 
 viz_pick_play_frac <-
   plays_w_pick_info %>% 
-  count(tm = possession_team, is_pick_play) %>% 
+  count(tm = possession_team, has_pick) %>% 
   group_by(tm) %>% 
   mutate(
     frac = n / sum(n)
   ) %>% 
   ungroup() %>% 
-  filter(is_pick_play == 1) %>% 
+  filter(has_pick == 1) %>% 
   mutate(
     rnk = row_number(-frac),
     across(tm, ~fct_reorder(.x, -rnk))
@@ -207,7 +206,7 @@ res_match <-
 matched <- res_match %>% MatchIt::match.data()
 matched
 matched %>% 
-  lm(formula(epa ~ is_pick_play), data = ., weights = 1 / distance) %>% 
+  lm(formula(epa ~ has_pick), data = ., weights = 1 / distance) %>% 
   summary()
 
 matched %>% 
@@ -215,7 +214,7 @@ matched %>%
   arrange(subclass)
 
 matched %>% 
-  group_by(is_pick_play) %>% 
+  group_by(has_pick) %>% 
   select(one_of(c(col_y, cols_features))) %>% 
   summarise(
     across(where(is.numeric), mean, na.rm = TRUE) # ,
@@ -223,24 +222,24 @@ matched %>%
   )
 
 plays_w_pick_info %>% 
-  group_by(n_rb, is_pick_play) %>% 
+  group_by(n_rb, has_pick) %>% 
   slice(c(1:100)) %>% 
   ungroup()
 
 plays_w_pick_info %>% 
   # filter(n_wr >= 2, n_wr <= 3) %>% 
-  # group_by(n_wr_fct, is_pick_play) %>% 
+  # group_by(n_wr_fct, has_pick) %>% 
   # slice(c(1:100)) %>% 
   # ungroup() %>% 
-  select(matches('n_(rb|wr|te)_fct$'), is_pick_play) %>%  
-  # select(n_wr_fct, is_pick_play) %>% 
+  select(matches('n_(rb|wr|te)_fct$'), has_pick) %>%  
+  # select(n_wr_fct, has_pick) %>% 
   gtsummary::tbl_summary(
     statistic = list(
       gtsummary::all_categorical() ~ '{n} ({p}%)',
       gtsummary::all_continuous() ~ '{median} ({p25}, {p75})'
     ),
     # label = lab,
-    by = is_pick_play
+    by = has_pick
   ) %>%
   gtsummary::add_p(
     # test = gtsummary::all_categorical() ~ 'aov',
@@ -249,9 +248,9 @@ plays_w_pick_info %>%
   )
 
 plays_w_pick_info %>% 
-  count(n_wr_fct, is_pick_play) %>% 
+  count(n_wr_fct, has_pick) %>% 
   ggplot() +
-  aes(x = n_wr_fct, y = n, color = is_pick_play) +
+  aes(x = n_wr_fct, y = n, color = has_pick) +
   geom_point()
 
 # others: 'type_dropback', 'is_defensive_pi', 'personnel_o', 'personnel_d',  'possession_team',
@@ -281,7 +280,7 @@ cols_c_i <-
   )
 cols_features <- c(cols_d, cols_c_i)
 
-col_y <- 'is_pick_play'
+col_y <- 'has_pick'
 fmla_pick_play_prob <-
   generate_formula(
     # intercept = TRUE,
@@ -299,7 +298,7 @@ rec_pick_play_prob <-
 rec_pick_play_prob
 
 df <- rec_pick_play_prob %>% recipes::prep() %>% recipes::juice()
-fit <- df %>% glm(formula(is_pick_play ~ . + 0), data = ., family = stats::binomial)
+fit <- df %>% glm(formula(has_pick ~ . + 0), data = ., family = stats::binomial)
 fit %>% summary()
 
 spec_pick_play_prob <-
@@ -439,7 +438,7 @@ do_save_plot(viz_pick_play_prob_coefs)
 # TODO
 Matching::Match(
   Y = plays_w_pick_info$epa,
-  Tr = plays_w_pick_info$is_pick_play,
+  Tr = plays_w_pick_info$has_pick,
   X = fitted(fit_pick_play_prob$fit$fit$fit),
   ties = FALSE,
   estimand = 'ATT'
@@ -552,23 +551,23 @@ pick_features_simple_pretty <-
   filter(nfl_id_target == nfl_id) %>%
   mutate(
     across(
-      has_intersect, ~sprintf('Is Pick Combo? = %s', ifelse(.x, 'Y', 'N'))
+      has_intersect, ~sprintf('Target Is Picked? %s', ifelse(.x, 'Y', 'N'))
     )
   ) %>%
-  select(has_intersect, epa)
+  select(target_is_intersect = has_intersect, pass_result, epa)
 pick_features_simple_pretty
 
 # This should go at the top of the notebook.
 t_test_simple <-
   pick_features_simple_pretty %>% 
+  rename(`Pass Result` = pass_result) %>% 
   tidyr::drop_na() %>% 
   gtsummary::tbl_summary(
     statistic = list(
       gtsummary::all_categorical() ~ '{n} ({p}%)',
       gtsummary::all_continuous() ~ '{median} ({p25}, {p75})'
     ),
-    # label = lab,
-    by = has_intersect
+    by = target_is_intersect
   ) %>%
   gtsummary::add_p(
     test = gtsummary::all_continuous() ~ 't.test',
@@ -581,18 +580,55 @@ res_t_test_simple <-
   gtsummary::as_gt() %>% 
   gt::gtsave(filename = file.path(get_bdb_dir_figs(), 't_test_simple.png'))
 
+# tab_epa_simple <-
+#   pick_features_simple_pretty %>% 
+#   # rename(`Pass Result` = pass_result) %>% 
+#   tidyr::drop_na() %>% 
+#   gtsummary::tbl_summary(
+#     statistic = list(
+#       gtsummary::all_categorical() ~ '{n} ({p}%)',
+#       gtsummary::all_continuous() ~ '{median} ({p25}, {p75})'
+#     ),
+#     by = pass_result
+#   ) 
+# tab_epa_simple
+
+tab_epa_simple <-
+  pick_features_simple_pretty %>% 
+  group_by(target_is_intersect, pass_result) %>% 
+  summarize(across(c(epa), mean)) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = target_is_intersect, values_from = epa) %>% 
+  rename(` ` = pass_result) %>% 
+  mutate(across(where(is.numeric), round, 2)) %>% 
+  gt::gt() %>% 
+  gt::tab_header(
+    title = gt::md('EPA by pass result')
+  ) %>% 
+  gt::cols_label(
+    `Target Is Picked? N` = gt::md('**Target Is Picked? N**'),
+    `Target Is Picked? Y` = gt::md('**Target Is Picked? Y**')
+  )
+tab_epa_simple
+
+res_tab_epa_simple <-
+  tab_epa_simple %>% 
+  gt::gtsave(filename = file.path(get_bdb_dir_figs(), 'tab_epa_simple.png'))
+res_tab_epa_simple
+
+
 pick_features_pretty <-
   pick_features %>%
   filter(nfl_id_target == nfl_id) %>%
   mutate(
     across(
-      has_same_init_defender, ~sprintf('Has Same Initial Defender? = %s', ifelse(.x, 'Y', 'N'))
+      has_same_init_defender, ~sprintf('Has Same Initial Defender? %s', ifelse(.x, 'Y', 'N'))
     ),
     across(
-      has_intersect, ~sprintf('Is Pick Combo? = %s', ifelse(.x, 'Y', 'N'))
+      target_is_intersect, ~sprintf('Target Is Picked? %s', ifelse(.x, 'Y', 'N'))
     )
   ) %>%
-  select(has_same_init_defender, has_intersect, matches('^[ew]pa'))
+  select(has_same_init_defender, target_is_intersect, matches('^[ew]pa'))
 pick_features_pretty
 
 save_new_t_test <- function(what = c('same_init_defender', 'intersect'), cnd = dplyr::quos(TRUE), suffix = NULL, sep = '_') {
@@ -655,12 +691,12 @@ save_new_t_test <- function(what = c('same_init_defender', 'intersect'), cnd = d
 save_new_t_test('same_init_defender')
 save_new_t_test(
   'same_init_defender',
-  cnd = dplyr::quos(.data$has_intersect %>% str_detect('N$')), 
+  cnd = dplyr::quos(.data$target_is_intersect %>% str_detect('N$')), 
   suffix = 'wo_intersect'
 )
 save_new_t_test(
   'same_init_defender',
-  cnd = dplyr::quos(.data$has_intersect %>% str_detect('Y$')), 
+  cnd = dplyr::quos(.data$target_is_intersect %>% str_detect('Y$')), 
   suffix = 'w_intersect'
 )
 save_new_t_test('intersect')
@@ -702,9 +738,9 @@ viz_t_test <-
   drop_na() %>% 
   # sample_frac(0.1) %>% 
   ggplot() +
-  aes(y = has_intersect, x = value) +
+  aes(y = target_is_intersect, x = value) +
   ggbeeswarm::geom_quasirandom(
-    aes(color = has_intersect),
+    aes(color = target_is_intersect),
     groupOnX = FALSE,
     alpha = 0.2
   ) +
@@ -712,17 +748,17 @@ viz_t_test <-
     data =
       pick_play_t_test_trunc %>% 
       drop_na() %>% 
-      group_by(has_intersect, has_same_init_defender, stat) %>% 
+      group_by(target_is_intersect, has_same_init_defender, stat) %>% 
       summarize(
         across(value, median)
       ) %>% 
       ungroup(),
-    aes(color = has_intersect, xintercept = value, group = has_intersect),
+    aes(color = target_is_intersect, xintercept = value, group = target_is_intersect),
     size = 1.5
   ) +
   facet_wrap(has_same_init_defender ~ stat, scales = 'free', ncol = 2, nrow = 3, dir = 'v') +
   # scale_color_manual(
-  #   values = c('Is Pick Combo? Y' = 'blue', 'Is Pick Combo? N' = 'grey50')
+  #   values = c('Target Is Picked? Y' = 'blue', 'Target Is Picked? N' = 'grey50')
   # ) +
   guides(color = guide_legend('', override.aes = list(size = 3, alpha = 1))) +
   theme(

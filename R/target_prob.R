@@ -311,7 +311,7 @@ fit_target_prob_split <- function(trn, tst, fmla, min_n = 2, mtry = 42, trees = 
   fit_ran <- FALSE
   if(!all(fit_exists, !overwrite)) {
     fit <- parsnip::fit(wf, trn)
-    readr::write_rds(fit, path_fit)
+    # readr::write_rds(fit, path_fit)
     fit_ran <- TRUE
   } else {
     .display_info('Skipping fitting.')
@@ -320,7 +320,6 @@ fit_target_prob_split <- function(trn, tst, fmla, min_n = 2, mtry = 42, trees = 
   probs_ran <- FALSE
   if(!all(probs_exist, !overwrite)) {
     if(!fit_ran) {
-      browser()
       fit <- path_fit %>% read_rds()
     }
     probs <-

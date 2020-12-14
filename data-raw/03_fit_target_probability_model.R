@@ -50,7 +50,6 @@ if(!final) {
   
   res_grid_rf <-
     grid_params_rf %>%
-    # slice(1) %>%
     mutate(
       acc =
         map2(
@@ -89,7 +88,7 @@ if(!final) {
       trn = trn,
       tst = tst,
       fmla = fmla,
-      min_n = 25,
+      min_n = 2,
       mtry = 39,
       suffix = sprintf('%s_%s', stem, idx_fold)
     )
@@ -101,16 +100,20 @@ if(!final) {
       across(id, ~.x %>% str_remove('Fold') %>% as.integer())
     ) %>% 
     rename(idx_fold = id) %>% 
+    tail(9) %>% 
     mutate(res = map2(splits, idx_fold, fit_target_prob_split_fold))
   res_folds
   
   probs_folds <-
     fs::dir_ls(
       get_bdb_dir_data(),
-      regexp = sprintf('%s_.*parquet', stem)
+      regexp = sprintf('%s.*parquet', stem)
     ) %>%
-    str_subset('_by_play', negate = TRUE) %>% 
-    map_dfr(~arrow::read_parquet(.x))
+    tibble(path = .) %>% 
+    mutate(fold = path %>% str_replace_all('(^.*)_([0-9]+)([-]min.*$)', '\\2') %>% as.integer()) %>% 
+    mutate(data = map(path, arrow::read_parquet)) %>% 
+    select(-path) %>% 
+    unnest(data)
   probs_folds
-  arrow::write_parquet(probs_folds, file.path(get_bdb_dir_data(), sprintf('%s_folds.parquet', stem)))
+  arrow::write_parquet(probs_folds, file.path(get_bdb_dir_data(), sprintf('%s_min_n2_folds.parquet', stem)))
 }

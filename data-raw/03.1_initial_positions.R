@@ -1,8 +1,25 @@
 
 library(tidyverse)
 library(bdb2021)
-# data('routes', package = 'bdb2021')
+data('plays_w_pick_info', package = 'bdb2021')
 features <- import_new_features()
+min_dists_naive_od_target <- file.path(get_bdb_dir_data(), 'min_dists_naive_od_target.parquet') %>% arrow::read_parquet()
+min_dists_naive_od_target
+
+snap_frames <-
+  min_dists_naive_od_target %>%
+  group_by(game_id, play_id) %>%
+  filter(frame_id == min(frame_id)) %>%
+  ungroup() %>%
+  select(game_id, play_id, frame_id)
+snap_frames
+
+min_dists_naive_od_target_filt <-
+  min_dists_naive_od_target %>%
+  semi_join(snap_frames)
+min_dists_naive_od_target_filt
+
+
 
 snap_frames <-
   features %>%
@@ -26,7 +43,6 @@ features_filt
 
 cols_id <-
   c(
-    'week',
     'game_id',
     'play_id',
     'frame_id'
@@ -76,52 +92,30 @@ features_wide <-
     plays_w_pick_info
   ) %>%
   filter(!is.na(is_pick_play))
-features_wide$targe
-
-features_wide %>% 
-  filter(is_pick_play == '1') %>% 
-  rename(nfl_id_target = target_nfl_id) %>% 
-  mutate(
-    is_target = if_else(nfl_id == nfl_id_target, TRUE, FALSE)
-  )
-
-min_dists_naive_target <- import_min_dists_naive_target()
-min_dists <-
-  import_min_dists_naive_target() %>%
-  select(game_id, play_id, frame_id, event, idx_o, nfl_id, nfl_id_d, dist_d) %>%
-  group_by(game_id, play_id, frame_id, event, idx_o, nfl_id) %>%
-  # Inverse distance weighting. Using the squared power is sort of an arbitrary choice. One could use whatever power seems reasonable.
-  mutate(
-    dist_d_total_o = sum(1 / dist_o^2),
-    wt_o = (1 / dist_d^2) / dist_d_total_o
-  ) %>%
-  ungroup() %>%
-  group_by(game_id, play_id, frame_id, event, nfl_id_d) %>%
-  # Inverse distance weighting. Using the squared power is sort of an arbitrary choice. One could use whatever power seems reasonable.
-  mutate(
-    dist_d_total_d = sum(1 / dist_d^2),
-    wt_d = (1 / dist_d^2) / dist_d_total_d
-  ) %>%
-  ungroup()
-min_dists
+features_wide
 
 # others: 'type_dropback', 'is_defensive_pi', 'personnel_o', 'personnel_d',  'possession_team',
+cols_extra <- 'is_target'
+cols_id <- c('game_id', 'play_id')
 cols_d <-
   c(
     # 'defenders_in_the_box',
     # 'number_of_pass_rushers',
-    sprintf('n_%s_fct', c('wr', 'te')), # , 'dl', 'lb', 'db')),
-    'quarter',
-    'down'
+    # sprintf('n_%s_fct', c('wr', 'te')), # , 'dl', 'lb', 'db')),
+    # 'quarter_fct',
+    # 'down_fct'
   )
 
 # cols_c_i_added_nflfastr <- 'wp'
 cols_c_i_added <- 
   c(
     # cols_c_i_added_nflfastr, 
-    sprintf('x_%d', 1:5),
-    sprintf('dist_ball_%d', 1:5),
-    sprintf('dist_d1_naive_%d', 1:5),
+    # sprintf('x_%d', 1:5),
+    # sprintf('dist_ball_%d', 1:5),
+    # sprintf('dist_d1_naive_%d', 1:5),
+    sprintf('x_%s', c('o', 'd')),
+    sprintf('dist_%s', c('o', 'd')),
+    'yardline_100',
     'pre_snap_score_diff'
   )
 
@@ -129,39 +123,60 @@ cols_c_i_added <-
 cols_c_i <-
   c(
     cols_c_i_added,
-    # sprintf('n_%s', c('rb', 'wr', 'te')), # , 'dl', 'lb', 'db')),
+    'quarter',
+    'down',
+    # sprintf('n_%s', c('wr', 'te')), # , 'dl', 'lb', 'db')),
     'yards_to_go',
-    'absolute_yardline_number',
     'pre_snap_home_score'
   )
 cols_features <- c(cols_d, cols_c_i)
+col_trt <- 'is_pick_play'
+col_y <- 'epa'
 
-col_y <- 'is_pick_play'
-fmla_pick_play_prob <-
+features_wide <-
+  min_dists_naive_od_target_filt %>% 
+  select(-target_nfl_id) %>% 
+  right_join(plays_w_pick_info) %>% 
+  # filter(target_nfl_id == nfl_id) %>% 
+  mutate(
+    is_target = if_else(target_nfl_id == nfl_id, '1', '0') %>% factor()
+  ) %>% 
+  relocate(is_target, is_pick_play) %>% 
+  mutate(across(c(quarter, down), as.integer)) # %>% 
+  # select(one_of(c(cols_id, col_y, col_trt, cols_features, cols_extra)))
+features_wide
+# features_wide %>% skimr::skim(epa)
+features_wide %>% group_by(is_pick_play, is_target, pass_result) %>% summarize(n = n(), across(matches('^[ew]pa'), mean), na.rm = TRUE)
+
+fmla_pick_play_prob_prop <-
   generate_formula(
-    # intercept = TRUE,
-    intercept = FALSE,
+    intercept = TRUE,
+    # intercept = FALSE,
     data = features_wide, 
-    y = col_y, 
+    y = col_trt, 
     x_include = cols_features
   )
-fmla_pick_play_prob
+fmla_pick_play_prob_prop
 
-fit_pick_play_prob_ind <-
+fit_pick_play_prob_prop <-
   features_wide %>% 
-  glm(fmla_pick_play_prob, data = ., family = stats::binomial)
-fit_pick_play_prob_ind
+  glm(fmla_pick_play_prob_prop, data = ., family = stats::binomial)
+fit_pick_play_prob_prop
+
+fit_pick_play_prob_prop %>% 
+  broom::tidy() %>% 
+  arrange(p.value)
 
 res_match <-
   Matching::Match(
     # caliper = 0.25,
     ties = FALSE,
-    X = fit_pick_play_prob_ind %>% fitted(),
+    X = fit_pick_play_prob_prop %>% fitted(),
     # X = model.matrix(fmla, features_wide),
     Y = features_wide[['epa']],
     Tr = features_wide[['is_pick_play']] %>% as.integer() %>% {. - 1L}
   )
-res_match
+# res_match
 
 control_match <- features_wide[res_match[['index.control']], ]
 treatment_match <- features_wide[res_match[['index.treated']], ]
@@ -236,14 +251,82 @@ sd_diffs %>%
   arrange(col) %>% 
   ggplot() +
   aes(y = col, x = abs(sd_diff), color = grp) +
+  geom_vline(aes(xintercept = 0.025), linetype = 2) +
   geom_point() +
   geom_path(aes(group = grp))
 
-features_wide <-
-  features_wide %>% 
-  left_join(features_match %>% distinct(game_id, play_id, grp))
-features_wide %>% 
-  filter(!is.na(grp))
+fmla_pick_play_prob <-
+  generate_formula(
+    intercept = TRUE,
+    # intercept = FALSE,
+    data = features_match, 
+    y = col_y, 
+    x_include = c(cols_features, col_trt)
+  )
+fmla_pick_play_prob
+
+fit_pick_play_prob <-
+  features_match %>% 
+  lm(fmla_pick_play_prob, data = .)
+fit_pick_play_prob
+
+fit_pick_play_prob_simple <-
+  features_match %>% 
+  lm(formula(epa ~ is_pick_play), data = .)
+fit_pick_play_prob_simple %>% broom::tidy()
+
+plays_w_pick_info %>% 
+  count(
+
+fit_pick_play_prob_prop %>%
+  broom::augment() %>% 
+  bind_cols(features_wide %>% select(game_id, play_id, epa)) %>% 
+  group_by(is_pick_play) %>% 
+  summarize(
+    n = n(),
+    across(c(epa), list(mean = mean, sd = sd, q25 = ~quantile(.x, 0.25), q75 = ~quantile(.x, 0.75)))
+  )
+
+fit_pick_play_prob %>%
+  broom::augment() %>% 
+  group_by(is_pick_play) %>% 
+  summarize(
+    n = n(),
+    across(c(epa), list(mean = mean, sd = sd, q25 = ~quantile(.x, 0.25), q75 = ~quantile(.x, 0.75)))
+  )
+
+coefs_pick_play_prob <-
+  fit_pick_play_prob %>%
+  broom::tidy() %>%
+  mutate(
+    # across(term, ~str_replace_all(.x, '(^.*)([<>2-8]+)', '\\1_\\2')),
+    across(term, ~fct_reorder(.x, estimate)),
+    lo = estimate - 1.96 * std.error,
+    hi = estimate + 1.96 * std.error,
+    is_signif = if_else(p.value < 0.05, TRUE, FALSE)
+  )
+coefs_pick_play_prob
+
+viz_pick_play_prob_coefs <-
+  coefs_pick_play_prob %>%
+  ggplot() +
+  aes(y = term, x = estimate, color = is_signif) +
+  geom_point(size = 2) +
+  geom_errorbarh(aes(xmin = lo, xmax = hi), size = 1) +
+  scale_color_manual(values = c(`TRUE` = 'red', `FALSE` = 'black')) +
+  geom_vline(data = tibble(), aes(xintercept = 0), linetype = 2) +
+  guides(color = guide_legend('Is Statistically Significant?')) +
+  theme(
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 12),
+    legend.position = 'top' # ,
+    # legend.box = element_rec()
+  ) +
+  labs(
+    title = 'Play-Level Pick Route Logistic Regression Model Coefficients',
+    y = NULL, x = 'Estimate +- 1.96 Standard Error'
+  )
+viz_pick_play_prob_coefs
 
 res_matchit <-
   MatchIt::matchit(
@@ -260,7 +343,7 @@ matched %>%
 
 res_match <-
   Matching::Match(
-    # X = fit_ind %>% fitted(),
+    # X = fit_prop %>% fitted(),
     fmla
     data = features_wide,
   )
@@ -272,8 +355,8 @@ features_wide[res_match$index.control, ] %>%
   relocate(has_intersect)
   mutate(viz = map2(game_id, play_id, plot_play))
 
-coefs_ind <-
-  fit_ind %>%
+coefs_prop <-
+  fit_prop %>%
   broom::tidy() %>%
   mutate(
     # across(term, ~str_replace_all(.x, '(^.*)([<>2-8]+)', '\\1_\\2')),
@@ -282,9 +365,9 @@ coefs_ind <-
     hi = estimate + 1.96 * std.error,
     is_signif = if_else(p.value < 0.05, TRUE, FALSE)
   )
-coefs_ind
+coefs_prop
 
-coefs_ind %>%
+coefs_prop %>%
   ggplot() +
   aes(y = term, x = estimate, color = is_signif) +
   geom_point(size = 2) +
