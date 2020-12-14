@@ -176,6 +176,12 @@ plays_w_pick_info <-
 plays_w_pick_info
 usethis::use_data(plays_w_pick_info, overwrite = TRUE)
 
+plays_w_pick_info_min <-
+  plays_w_pick_info %>% 
+  select(
+    game_id, play_id, epa, is_target_picked, game_half_fct, down_fct, yardline_100, pre_snap_score_diff, pre_snap_home_score, yards_to_go
+  )
+
 viz_pick_play_frac <-
   plays_w_pick_info %>% 
   count(tm = possession_team, has_intersect) %>% 
@@ -225,7 +231,7 @@ min_dists_naive_od_target_filt
 features_wide <-
   min_dists_naive_od_target_filt %>% 
   select(-target_nfl_id) %>% 
-  inner_join(plays_w_pick_info) %>% 
+  inner_join(plays_w_pick_info_min) %>% 
   mutate(
     epa_abs = epa %>% abs(),
   )
@@ -514,6 +520,7 @@ pick_features
 
 # t test stuff ----
 if(FALSE) {
+  
 .binary_factor_to_lgl <- function(x) {
   x %>% as.integer() %>% {. - 1L} %>% as.logical()
 }
@@ -532,6 +539,7 @@ if(FALSE) {
     select(is_target_picked = has_intersect, is_pass_complete, epa)
 }
 
+# gtsummary offensive t tests----
 .f_gtsummary <- function(data, by) {
   data %>% 
     gtsummary::tbl_summary(
@@ -547,7 +555,6 @@ if(FALSE) {
 }
 
 do_save_t_test_tabs <- function(data, suffix = NULL, sep = '_') {
-
 
   t1 <-
     data %>%
@@ -585,6 +592,106 @@ do_save_t_test_tabs <- function(data, suffix = NULL, sep = '_') {
 features_wide %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'nonadjusted')
 features_match %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'adjusted')
 
+# non gtsummary offensive pick play t tests----
+.f_agg_epa <- function(data) {
+
+  data %>% 
+    group_by(is_target_picked, is_pass_complete) %>% 
+    summarize(across(c(epa), list(median = median, q25 = ~quantile(.x, 0.25), q75 = ~quantile(.x, 0.75)), .names = '{fn}')) %>% 
+    ungroup() %>% 
+    mutate(
+      value = sprintf('%.02f (%.02f, %.02f)', median, q25, q75)
+    )
+}
+
+.f_agg_n <- function(data) {
+
+  data %>% 
+    group_by(is_target_picked, is_pass_complete) %>% 
+    summarize(n = n()) %>% 
+    ungroup() %>% 
+    group_by(is_target_picked) %>% 
+    mutate(total = sum(n), frac = n / total) %>% 
+    ungroup() %>% 
+    mutate(
+      # is_pass_complete = sprintf('%s (%s)', is_pass_complete, scales::comma(total)),
+      value = sprintf('%s (%s)', scales::comma(n), scales::percent(frac, accuracy = 0.1))
+    )
+}
+
+.f_pivot_agg <- function(data) {
+  data %>% 
+    select(is_target_picked, is_pass_complete, value) %>% 
+    pivot_wider(names_from = is_target_picked, values_from = value) %>% 
+    mutate(
+      across(is_pass_complete, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
+    )
+}
+
+.f_gt <- function(data, subtitle) {
+
+  data %>% 
+    rename(`Pass Successful?` = is_pass_complete) %>% 
+    gt::gt() %>% 
+    gt::tab_header(
+      subtitle = subtitle,
+      title = gt::md('EPA by pass outcome')
+    ) %>% 
+    gt::cols_label(
+      # `t-test p-value` = gt::md('**t-test\np-value**'),
+      `Target Is Picked? N` = gt::md('**Target Is Picked? N**'),
+      `Target Is Picked? Y` = gt::md('**Target Is Picked? Y**')
+    )
+}
+
+.f_save_gt <- function(gt, suffix, prefix = c('epa', 'n')) {
+  prefix <- match.arg(prefix)
+  gt %>% 
+    gt::gtsave(filename = file.path(get_bdb_dir_figs(), sprintf('tab_%s%s.png', prefix, suffix)))
+}
+
+do_save_epa_tabs <- function(data, subtitle = NULL, suffix = NULL, sep = '_') {
+  # browser()
+  # data <- features_wide %>% .simplify_pick_features(); subtitle = NULL; suffix = NULL; sep = '_'
+  tab_epa <- 
+    data %>% 
+    .f_agg_epa() %>% 
+    .f_pivot_agg()
+  tab_epa
+
+  .t_test_target <- function(cnd = c('Y', 'N')) {
+    # cnd <- match.arg(cnd)
+    t.test(epa ~ is_target_picked, data = data %>% filter(is_pass_complete %>% str_detect(sprintf('%s$', cnd))))
+  }
+  # .t_test_success <- function(cnd = c('Y', 'N')) {
+  #   # cnd <- match.arg(cnd)
+  #   t.test(epa ~ is_pass_complete, data = data %>% filter(is_target_picked %>% str_detect(sprintf('%s$', cnd))))
+  # }
+  t_target_y <- .t_test_target('Y')
+  t_target_n <- .t_test_target('N')
+  # t_success_y <- .t_test_success('Y')
+  # t_success_n <- .t_test_success('N')
+  tab_epa['t-test p-value'] <- 
+    c(t_target_n$p.value, t_target_y$p.value) %>% 
+    sprintf('%0.03f', .)
+  
+  tab_n <- data %>% .f_agg_n() %>% .f_pivot_agg()
+  
+  if(is.null(suffix)) {
+    suffix <- ''
+  } else {
+    suffix <- sprintf('%s%s', sep, suffix)
+  }
+  tab_epa %>% .f_gt(subtitle = subtitle) %>% .f_save_gt(suffix = suffix, prefix = 'epa')
+  tab_n %>% .f_gt(subtitle = subtitle) %>% .f_save_gt(suffix = suffix, prefix = 'n')
+  # list(epa = tab_epa, n = tab_n)
+  invisible()
+}
+
+features_wide %>% .simplify_pick_features() %>% do_save_epa_tabs(subtitle = 'Before matching', suffix = 'nonadjusted')
+features_match %>% .simplify_pick_features() %>% do_save_epa_tabs(subtitle = 'After matching', suffix = 'adjusted')
+
+# defense t tests----
 pick_features_pretty <-
   pick_features %>%
   filter(nfl_id_target == nfl_id) %>%
@@ -599,26 +706,25 @@ pick_features_pretty <-
   select(has_same_init_defender, is_target_picked = has_intersect, matches('^[ew]pa'))
 pick_features_pretty
 
-save_new_t_test <- function(what = c('same_init_defender', 'intersect'), cnd = dplyr::quos(TRUE), suffix = NULL, sep = '_') {
-  what <- match.arg(what)
-  what_other <- 
+save_new_t_test <- function(col = c('has_same_init_defender', 'is_target_picked'), cnd = dplyr::quos(TRUE), suffix = NULL, sep = '_') {
+  col <- match.arg(col)
+  col_other <- 
     switch(
-      what, 
-      same_init_defender = 'intersect', 
-      intersect = 'same_init_defender'
+      col, 
+      has_same_init_defender = 'is_target_picked', 
+      is_target_picked = 'has_same_init_defender'
     )
-  what_other_pretty <- 
+  col_other_pretty <- 
     switch(
-      what_other, 
-      same_init_defender = 'Has Same Initial Defender?', 
-      intersect = 'Is Pick Route Combo?'
+      col_other, 
+      has_same_init_defender = 'Has Same Initial Defender?', 
+      is_target_picked = 'Target Is Picked?'
     )
-  col <- what %>% sprintf('has_%s', .)
-  col_other <- what_other %>% sprintf('has_%s', .)
+  col_other <- col_other
   col_sym <- col %>% sym()
   col_other_sym <- col_other %>% sym()
-  # This is hacky but whatever. tbl_summary is not taking symbols
-  lab <- list(temp = what_other_pretty)
+  # This is hacky but colever. tbl_summary is not taking symbols
+  lab <- list(temp = col_other_pretty)
   names(lab) <- col_other
   suppressMessages(
     t_test <-
@@ -633,7 +739,7 @@ save_new_t_test <- function(what = c('same_init_defender', 'intersect'), cnd = d
           # gtsummary::all_continuous() ~ '{mean} ({sd})',
           gtsummary::all_categorical() ~ '{n} ({p}%)'
         ),
-        # label = !!col_other_sym ~ what_other_pretty,
+        # label = !!col_other_sym ~ col_other_pretty,
         label = lab,
         by = !!col_sym
       ) %>%
@@ -652,7 +758,7 @@ save_new_t_test <- function(what = c('same_init_defender', 'intersect'), cnd = d
   res <-
     t_test %>% 
     gtsummary::as_gt() %>% 
-    gt::gtsave(filename = file.path(get_bdb_dir_figs(), sprintf('t_test_%s%s.png', what, suffix)))
+    gt::gtsave(filename = file.path(get_bdb_dir_figs(), sprintf('t_test_%s%s.png', col, suffix)))
   t_test
 }
 
@@ -748,6 +854,10 @@ all_plays <-
   pick_features %>%
   # This is the last second measured on the play.
   select(-sec) %>% 
+  rename(has_same_defender = has_same_init_defender) %>% 
+  mutate(
+    across(has_same_defender, ~.x %>% as.integer() %>% factor())
+  ) %>% 
   left_join(
     players_from_tracking,
     by = c('game_id', 'play_id', 'nfl_id')
@@ -767,7 +877,7 @@ all_plays <-
     across(c(display_name, position), ~coalesce(.x, '?'))
   ) %>%
   mutate(
-    is_target = if_else(nfl_id == nfl_id_target, TRUE, FALSE)
+    is_target = if_else(nfl_id == nfl_id_target, 1L, 0L)
   ) %>% 
   left_join(
     routes,
@@ -789,4 +899,59 @@ all_plays <-
     by = c('game_id', 'play_id', 'nfl_id_d_robust_init')
   )
 all_plays
+
+features_wide <-
+  inner_join(
+    all_plays %>% 
+      select(-frame_id, -event, -week) %>% 
+      rename_with(
+        ~sprintf('%s_1', .x),
+        c(nfl_id)
+      ) ,
+    features_wide %>% 
+      select(-frame_id, -event,  -epa, -is_target) %>% 
+      rename_with(
+        ~sprintf('%s_2', .x),
+        c(nfl_id)
+      )
+  ) %>% 
+  filter(nfl_id_1 == nfl_id_2) %>% 
+  rename(nfl_id = nfl_id_1) %>% 
+  select(-nfl_id_2)
+features_wide %>% filter(is_target)
+
+.simplify_pick_features <- function(data) {
+  data %>% 
+    mutate(
+      across(c(has_intersect, is_pass_complete, has_same_defender), .binary_factor_to_lgl),
+      across(
+        has_intersect, ~sprintf('Target Is Picked? %s', ifelse(.x, 'Y', 'N'))
+      ),
+      across(
+        is_pass_complete, ~sprintf('Pass Successful? %s', ifelse(.x, 'Y', 'N'))
+      ),
+      across(
+        has_same_defender, ~sprintf('Same Defender? %s', ifelse(.x, 'Y', 'N'))
+      )
+    ) %>%
+    select(is_target_picked = has_intersect, is_pass_complete, is_same_defender = has_same_defender, epa)
+}
+
+features_wide %>% .simplify_pick_features()
+
+fmla_pick_play_prob_prop <- formula(is_target_picked ~ game_half_fct + x_o + x_d + dist_o + dist_d + yardline_100 + pre_snap_score_diff*pre_snap_home_score + down_fct*yards_to_go)
+fit_pick_play_prob_prop <-
+  features_wide %>% 
+  glm(fmla_pick_play_prob_prop, data = ., family = stats::binomial)
+fit_pick_play_prob_prop
+
+res_match <-
+  Matching::Match(
+    caliper = 0.25,
+    ties = FALSE,
+    X = fit_pick_play_prob_prop %>% fitted(),
+    # X = model.matrix(fmla, features_wide),
+    Y = features_wide[['epa_abs']],
+    Tr = features_wide[['is_target_picked']] %>% as.integer() %>% {. - 1L}
+  )
 usethis::use_data(all_plays, overwrite = TRUE)
