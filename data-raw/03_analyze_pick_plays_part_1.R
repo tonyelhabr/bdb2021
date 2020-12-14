@@ -514,162 +514,6 @@ pick_features
 
 # t test stuff ----
 if(FALSE) {
-pick_features_simple_pretty <-
-  pick_features %>%
-  filter(nfl_id_target == nfl_id) %>%
-  mutate(
-    across(
-      has_intersect, ~sprintf('Target Is Picked? %s', ifelse(.x, 'Y', 'N'))
-    ),
-    across(is_pass_complete, ~.x %>% as.integer() %>% {. - 1L} %>% as.logical()),
-    across(
-      is_pass_complete, ~sprintf('Pass Successful? %s', ifelse(.x, 'Y', 'N'))
-    )
-  ) %>%
-  select(is_target_picked = has_intersect, is_pass_complete, epa)
-pick_features_simple_pretty
-
-# # This should go at the top of the notebook.
-t_test_simple <-
-  pick_features_simple_pretty %>%
-  mutate(
-    across(is_pass_complete, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
-  ) %>%
-  rename(`Pass Successful?` = is_pass_complete) %>%
-  tidyr::drop_na() %>%
-  gtsummary::tbl_summary(
-    statistic = list(
-      gtsummary::all_categorical() ~ '{n} ({p}%)',
-      gtsummary::all_continuous() ~ '{median} ({p25}, {p75})'
-    ),
-    # value = c(is_target_picked, `Pass Successful?` epa),
-    by = `Pass Successful?`,
-    # by = is_target_picked
-  ) %>%
-  gtsummary::add_p(
-    test = gtsummary::all_continuous() ~ 't.test',
-    pvalue_fun = function(x) gtsummary::style_pvalue(x, digits = 2)
-  )
-t_test_simple
-
-.f_gtsummary <- function(data, by) {
-  data %>% 
-    gtsummary::tbl_summary(
-      statistic = list(
-        gtsummary::all_continuous() ~ '{median} ({p25}, {p75})'
-      ),
-      by = all_of(by)
-    ) %>%
-    gtsummary::add_p(
-      test = gtsummary::all_continuous() ~ 't.test',
-      pvalue_fun = function(x) gtsummary::style_pvalue(x, digits = 2)
-    )
-}
-
-t1 <-
-  pick_features_simple_pretty %>%
-  select(is_pass_complete, epa) %>% 
-  mutate(
-    across(is_pass_complete, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
-  ) %>%
-  .f_gtsummary('is_pass_complete')
-t1
-
-t2 <-
-  pick_features_simple_pretty %>%
-  select(is_target_picked, epa) %>% 
-  mutate(
-    across(is_target_picked, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
-  ) %>%
-  .f_gtsummary('is_target_picked')
-t2
-
-gtsummary::tbl_merge(list(t1, t2), tab_spanner = c('Pass Successful?', 'Is Target Picked?'))
-tbl_stack(list(t1, t2), group_header = c('head1', 'head2'))
-
-
-t_test_simple
-
-res_t_test_simple <-
-  t_test_simple %>%
-  gtsummary::as_gt() %>%
-  gt::gtsave(filename = file.path(get_bdb_dir_figs(), 't_test_simple.png'))
-
-.f_debug <- function(data) {
-  data %>% 
-    group_by(is_target_picked, is_pass_complete) %>% 
-    summarize(n = n(), across(epa, mean)) %>% 
-    ungroup() %>% 
-    pivot_wider(names_from = is_pass_complete, values_from = c(epa, n))
-}
-
-.f_agg_epa <- function(data) {
-  data %>% 
-    group_by(is_target_picked, is_pass_complete) %>% 
-    summarize(across(c(epa), list(median = median, q25 = ~quantile(.x, 0.25), q75 = ~quantile(.x, 0.75)), .names = '{fn}')) %>% 
-    ungroup() %>% 
-    mutate(
-      value = sprintf('%.02f (%.02f, %.02f)', median, q25, q75)
-    )
-}
-
-.f_agg_n <- function(data) {
-  data %>% 
-    group_by(is_target_picked, is_pass_complete) %>% 
-    summarize(n = n()) %>% 
-    ungroup() %>% 
-    group_by(is_target_picked) %>% 
-    mutate(total = sum(n), frac = n / total) %>% 
-    ungroup() %>% 
-    mutate(
-      # is_pass_complete = sprintf('%s (%s)', is_pass_complete, scales::comma(total)),
-      value = sprintf('%s (%s)', scales::comma(n), scales::percent(frac, accuracy = 0.1))
-    )
-}
-
-data <-
-  
-
-.f_gt <- function(data, subtitle) {
-  data %>% 
-    select(is_target_picked, is_pass_complete, value) %>% 
-    pivot_wider(names_from = is_target_picked, values_from = value) %>% 
-    mutate(
-      across(is_pass_complete, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
-    ) %>% 
-    rename(`Pass Successful?` = is_pass_complete) %>% 
-    gt::gt() %>% 
-    gt::tab_header(
-      subtitle = subtitle,
-      title = gt::md('EPA by pass outcome')
-    ) %>% 
-    gt::cols_label(
-      `Target Is Picked? N` = gt::md('**Target Is Picked? N**'),
-      `Target Is Picked? Y` = gt::md('**Target Is Picked? Y**')
-    )
-}
-
-.f_save_gt <- function(gt, suffix, prefix = c('epa', 'n')) {
-  prefix <- match.arg(prefix)
-  gt %>% 
-    gt::gtsave(filename = file.path(get_bdb_dir_figs(), sprintf('tab_%s%s.png', prefix, suffix)))
-}
-
-do_save_epa_tabs <- function(data, subtitle = NULL, suffix = NULL, sep = '_') {
-  # browser()
-  tab_epa <- data %>% .f_agg_epa() %>% .f_gt(subtitle = subtitle)
-  tab_n <- data %>% .f_agg_n() %>% .f_gt(subtitle = subtitle)
-  if(is.null(suffix)) {
-    suffix <- ''
-  } else {
-    suffix <- sprintf('%s%s', sep, suffix)
-  }
-  tab_epa %>% .f_save_gt(suffix = suffix, prefix = 'epa')
-  tab_n %>% .f_save_gt(suffix = suffix, prefix = 'n')
-  # list(epa = tab_epa, n = tab_n)
-  invisible()
-}
-
 .binary_factor_to_lgl <- function(x) {
   x %>% as.integer() %>% {. - 1L} %>% as.logical()
 }
@@ -688,22 +532,58 @@ do_save_epa_tabs <- function(data, subtitle = NULL, suffix = NULL, sep = '_') {
     select(is_target_picked = has_intersect, is_pass_complete, epa)
 }
 
-# pick_features_simple_pretty %>% do_save_epa_tabs(subtitle = 'All plays', suffix = 'nonadjusted_all')
-features_wide %>% .simplify_pick_features() %>% do_save_epa_tabs(subtitle = 'Before matching', suffix = 'nonadjusted')
-features_match %>% .simplify_pick_features() %>% do_save_epa_tabs(subtitle = 'After matching', suffix = 'adjusted')
-# fit_pick_play_prob_prop %>%
-#   broom::augment() %>% 
-#   rename(epa = .fitted) %>% 
-#   bind_cols(features_wide %>% select(game_id, play_id, has_intersect, is_pass_complete)) %>% 
-#   .simplify_pick_features() %>% 
-#   do_save_epa_tabs(subtitle = 'Before matching, logistic regresson fit (propensity model)', suffix = 'nonadjusted_fit')
+.f_gtsummary <- function(data, by) {
+  data %>% 
+    gtsummary::tbl_summary(
+      statistic = list(
+        gtsummary::all_continuous() ~ '{median} ({p25}, {p75})'
+      ),
+      by = all_of(by)
+    ) %>%
+    gtsummary::add_p(
+      test = gtsummary::all_continuous() ~ 't.test',
+      pvalue_fun = function(x) gtsummary::style_pvalue(x, digits = 2)
+    )
+}
 
-fit_epa_w_picks %>%
-  broom::augment() %>% 
-  rename(epa = .fitted) %>% 
-  bind_cols(features_match %>% select(game_id, play_id, has_intersect, is_pass_complete)) %>% 
-  .simplify_pick_features() %>% 
-  do_save_epa_tabs(subtitle = 'After matching, linear regression model fit', suffix = 'adjusted_fit')
+do_save_t_test_tabs <- function(data, suffix = NULL, sep = '_') {
+
+
+  t1 <-
+    data %>%
+    select(is_pass_complete, epa) %>% 
+    mutate(
+      across(is_pass_complete, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
+    ) %>%
+    .f_gtsummary('is_pass_complete')
+  t1
+  
+  t2 <-
+    data %>%
+    select(is_target_picked, epa) %>% 
+    mutate(
+      across(is_target_picked, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
+    ) %>%
+    .f_gtsummary('is_target_picked')
+  t2
+  
+  res <- 
+    gtsummary::tbl_merge(
+      list(t1, t2), 
+      tab_spanner = c('Pass Successful?', 'Is Target Picked?')
+    ) %>% 
+    gtsummary::as_gt()
+  if(is.null(suffix)) {
+    suffix <- ''
+  } else {
+    suffix <- sprintf('%s%s', sep, suffix)
+  }
+  gt::gtsave(res, filename = file.path(get_bdb_dir_figs(), sprintf('tab_t_test_epa%s.png', suffix)))
+  res
+}
+
+features_wide %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'nonadjusted')
+features_match %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'adjusted')
 
 pick_features_pretty <-
   pick_features %>%
