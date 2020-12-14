@@ -19,26 +19,16 @@ min_dists_naive_od_target_filt <-
   semi_join(snap_frames)
 min_dists_naive_od_target_filt
 
-# others: 'type_dropback', 'is_defensive_pi', 'personnel_o', 'personnel_d',  'possession_team',
-cols_extra <- c('epa', 'pass_complete')
+cols_extra <- c('epa', 'is_pass_complete')
 cols_id <- c('game_id', 'play_id')
 cols_d <-
   c(
-    # 'defenders_in_the_box',
-    # 'number_of_pass_rushers',
-    # sprintf('n_%s_fct', c('wr', 'te')), # , 'dl', 'lb', 'db')),
-    # 'quarter_fct',
     'game_half_fct',
     'down_fct'
   )
 
-# cols_c_i_added_nflfastr <- 'wp'
 cols_c_i_added <- 
   c(
-    # cols_c_i_added_nflfastr, 
-    # sprintf('x_%d', 1:5),
-    # sprintf('dist_ball_%d', 1:5),
-    # sprintf('dist_d1_naive_%d', 1:5),
     sprintf('x_%s', c('o', 'd')),
     sprintf('dist_%s', c('o', 'd')),
     'yardline_100',
@@ -49,10 +39,6 @@ cols_c_i_added <-
 cols_c_i <-
   c(
     cols_c_i_added,
-    # 'quarter',
-    # 'game_half',
-    # 'down',
-    # sprintf('n_%s', c('wr', 'te')), # , 'dl', 'lb', 'db')),
     'yards_to_go',
     'pre_snap_home_score'
   )
@@ -64,7 +50,7 @@ features_wide <-
   min_dists_naive_od_target_filt %>% 
   select(-target_nfl_id) %>% 
   inner_join(plays_w_pick_info) %>% 
-  filter(pass_result %in% c('C', 'I', 'IN')) %>%  # no 'S'
+  # filter(pass_result %in% c('C', 'I', 'IN')) %>%  # no 'S'
   mutate(
     epa_abs = epa %>% abs(),
   ) %>%
@@ -74,25 +60,25 @@ features_wide
 # Check to see that the epa numbers don't change much after the inner_join
 .f_debug <- function(data) {
   data %>% 
-    group_by(target_is_intersect, pass_complete) %>% 
+    group_by(target_is_intersect, is_pass_complete) %>% 
     summarize(n = n(), across(epa, mean)) %>% 
     ungroup() %>% 
-    pivot_wider(names_from = pass_complete, values_from = c(epa, n))
+    pivot_wider(names_from = is_pass_complete, values_from = c(epa, n))
 }
 
 plays_w_pick_info %>% .f_debug()
 features_wide %>% .f_debug()
 
+# `generate_formula()` is not capable of writing interactions, so copy-pasta the output and edit the formula.
 fmla_pick_play_prob_prop <-
   generate_formula(
     intercept = TRUE,
-    # intercept = FALSE,
     data = features_wide, 
     y = col_trt, 
     x_include = cols_features
   )
 fmla_pick_play_prob_prop
-fmla_pick_play_prob_prop <- formula(target_is_intersect ~ game_half_fct + x_o + x_d + dist_o + dist_d + yardline_100 + pre_snap_score_diff*pre_snap_home_score + down_fct*yards_to_go + 1)
+fmla_pick_play_prob_prop <- formula(target_is_intersect ~ game_half_fct + x_o + x_d + dist_o + dist_d + yardline_100 + pre_snap_score_diff*pre_snap_home_score + down_fct*yards_to_go)
 fit_pick_play_prob_prop <-
   features_wide %>% 
   glm(fmla_pick_play_prob_prop, data = ., family = stats::binomial)
@@ -230,17 +216,16 @@ fmla_pick_play_prob <-
     x_include = c(cols_features, col_trt)
   )
 fmla_pick_play_prob
-fmla_pick_play_prob <- formula(epa_abs ~ target_is_intersect + game_half_fct + x_o + x_d + dist_o + dist_d + yardline_100 + pre_snap_score_diff*pre_snap_home_score + down_fct*yards_to_go + 1)
+fmla_pick_play_prob <- formula(epa_abs ~ target_is_intersect + game_half_fct + x_o + x_d + dist_o + dist_d + yardline_100 + pre_snap_score_diff*pre_snap_home_score + down_fct*yards_to_go)
 fit_pick_play_prob <-
   features_match %>% 
   lm(fmla_pick_play_prob, data = .)
-fit_pick_play_prob %>% broom::tidy()
+fit_pick_play_prob
 
 coefs_pick_play_prob <-
   fit_pick_play_prob %>%
   broom::tidy() %>%
   mutate(
-    # across(term, ~str_replace_all(.x, '(^.*)([<>2-8]+)', '\\1_\\2')),
     across(term, ~fct_reorder(.x, estimate)),
     lo = estimate - 1.96 * std.error,
     hi = estimate + 1.96 * std.error,
@@ -266,7 +251,7 @@ fit_pick_play_prob_simple %>% broom::tidy()
 
 fit_pick_play_prob_simple <-
   features_match %>% 
-  lm(formula(epa ~ target_is_intersect + pass_complete + 0), data = .)
+  lm(formula(epa ~ target_is_intersect + is_pass_complete + 0), data = .)
 fit_pick_play_prob_simple %>% broom::tidy()
 
 fit_pick_play_prob_prop %>%

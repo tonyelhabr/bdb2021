@@ -392,6 +392,13 @@ import_min_dists_naive_target <- function() {
     arrow::read_parquet() 
 }
 
+#' Import package-generated half-second min distances to target receiver
+#' 
+#' @export
+import_min_dists_naive_od_target <- function() {
+  file.path(get_bdb_dir_data(), 'min_dists_naive_od_target.parquet') %>%
+    arrow::read_parquet() 
+}
 
 #' Import package-generated clean half-second target probabilities
 #' 
