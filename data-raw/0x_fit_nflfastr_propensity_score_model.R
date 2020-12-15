@@ -1,6 +1,6 @@
 
 library(tidyverse)
-data('pick_play_ids_adj', package = 'bdb2021')
+# data('pick_play_ids_adj', package = 'bdb2021')
 
 #' @seealso \url{https://github.com/guga31bb/nflfastR-data/blob/master/models/model_data.R#L1}
 
@@ -231,8 +231,8 @@ pbp_data <- pbp_data %>%
 plays <- import_plays()
 
 # Take out some weird plays... probably should do more than this
-plays %>% filter(is.na(personnel_o))
-plays %>% skimr::skim()
+# plays %>% filter(is.na(personnel_o))
+# plays %>% skimr::skim()
 plays_filt <-
   plays %>%
   anti_join(
@@ -251,17 +251,17 @@ pbp
 epa_model_data <-
   pbp_data %>%
   nflfastR:::make_model_mutations() %>%
-  left_join(
-    pick_play_ids_adj %>%
-      filter(sec <= 2) %>%
-      select(week, game_id, play_id) %>%
-      mutate(is_pick_play = 1L),
-    by = c('game_id', 'play_id', 'week')
-  ) %>%
-  semi_join(
-    plays_filt,
-    by = c('game_id', 'play_id')
-  ) %>%
+  # left_join(
+  #   pick_play_ids_adj %>%
+  #     filter(sec <= 2) %>%
+  #     select(week, game_id, play_id) %>%
+  #     mutate(is_pick_play = 1L),
+  #   by = c('game_id', 'play_id', 'week')
+  # ) %>%
+  # semi_join(
+  #   plays_filt,
+  #   by = c('game_id', 'play_id')
+  # ) %>%
   inner_join(
     pbp %>%
       select(game_id, play_id, epa),
@@ -280,7 +280,7 @@ epa_model_data <-
     label = as.factor(label),
     label = as.numeric(label),
     label = label - 1,
-    across(is_pick_play, ~coalesce(.x, 0L) %>% factor()),
+    # across(is_pick_play, ~coalesce(.x, 0L) %>% factor()),
     # Calculate the drive difference between the next score drive and the
     # current play drive:
     Drive_Score_Dist = Drive_Score_Half - drive,
@@ -305,7 +305,7 @@ epa_model_data <-
     play_id,
     epa,
     label,
-    is_pick_play,
+    # is_pick_play,
     half_seconds_remaining,
     yardline_100,
     home,
@@ -333,7 +333,10 @@ epa_model_data <-
   group_by(game_id, play_id) %>%
   filter(row_number() == 1L) %>%
   ungroup()
-
+epa_model_data %>% 
+  ggplot() +
+  aes(x = Total_W_Scaled) +
+  geom_histogram()
 # epa_model_data %>%
 #   select(matches('_(W|Dist)')) %>%
 #   mutate(idx = row_number()) %>%

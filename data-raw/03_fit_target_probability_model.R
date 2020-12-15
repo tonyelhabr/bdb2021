@@ -70,25 +70,25 @@ if(!final) {
 } else {
   stem <- 'target_prob_final_new'
   set.seed(42)
-  folds <- features_model %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
+  # folds <- features_model %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
   
   # # If folds is based on play ids.
-  # play_ids <- features_model %>% distinct(game_id, play_id, idx_o_target)
-  # folds <- play_ids %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
+  play_ids <- features_model %>% distinct(game_id, play_id, idx_o_target)
+  folds <- play_ids %>% rsample::vfold_cv(v = 10, strata = idx_o_target)
   
   fit_target_prob_split_fold <- function(fold, idx_fold) {
     trn <- fold %>% rsample::analysis()
     tst <- fold %>% rsample::assessment()
     
     # # If folds is based on play ids.
-    # trn <- features_model %>% semi_join(trn)
-    # tst <- features_model %>% semi_join(tst)
+    trn <- features_model %>% semi_join(trn)
+    tst <- features_model %>% semi_join(tst)
     
     fit_target_prob_split_timed(
       trn = trn,
       tst = tst,
       fmla = fmla,
-      min_n = 5,
+      min_n = 25,
       mtry = 39,
       suffix = sprintf('%s_%s', stem, idx_fold)
     )
@@ -100,6 +100,7 @@ if(!final) {
       across(id, ~.x %>% str_remove('Fold') %>% as.integer())
     ) %>% 
     rename(idx_fold = id) %>% 
+    tail(9) %>% 
     mutate(res = map2(splits, idx_fold, fit_target_prob_split_fold))
   res_folds
   
@@ -108,11 +109,22 @@ if(!final) {
       get_bdb_dir_data(),
       regexp = sprintf('%s.*parquet', stem)
     ) %>%
+    str_subset('probs[-]target') %>% 
     tibble(path = .) %>% 
     mutate(fold = path %>% str_replace_all('(^.*)_([0-9]+)([-]min.*$)', '\\2') %>% as.integer()) %>% 
     mutate(data = map(path, arrow::read_parquet)) %>% 
     select(-path) %>% 
     unnest(data)
   probs_folds
-  arrow::write_parquet(probs_folds, file.path(get_bdb_dir_data(), sprintf('%s_min_n5_folds.parquet', stem)))
+  path_export <- file.path(get_bdb_dir_data(), sprintf('%s_min_n25_folds.parquet', stem))
+  # path1 <- path_export
+  # path2 <- file.path(get_bdb_dir_data(), 'probs-tp-final-folds.parquet')
+  # probs_folds1 <- path1 %>% arrow::read_parquet()%>% arrange(game_id, play_id, frame_id)
+  # probs_folds2 <- path2 %>% arrow::read_parquet()%>% arrange(game_id, play_id, frame_id)
+  # probs_folds1
+  # probs_folds2
+  # probs_folds %>% filter(.set == 'tst') %>% arrange(game_id, play_id, frame_id)
+  
+  stopifnot(!file.exists(path_export))
+  arrow::write_parquet(probs_folds, path_export)
 }
