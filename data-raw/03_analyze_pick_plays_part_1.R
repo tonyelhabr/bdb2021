@@ -27,7 +27,6 @@ do_save_plot <- function(...) {
 }
 
 # basic eda on receiver_intersections_adj ----
-if(FALSE) {
 viz_intersections_after_n_sec <-
   receiver_intersections_adj %>% 
   semi_join(plays %>% select(game_id, play_id)) %>% 
@@ -51,10 +50,8 @@ viz_intersections_after_n_sec <-
   )
 viz_intersections_after_n_sec
 do_save_plot(viz_intersections_after_n_sec)
-}
 
-# pick_play_meta_init and plays_w_pick_info ----
-if(FALSE) {
+# pick_play_meta_init and plays_w_pick_off_info ----
 pick_play_meta_init <-
   receiver_intersections_adj %>%
   filter(sec <= .sec_cutoff) %>%
@@ -82,8 +79,9 @@ pick_play_meta_init
   ifelse(nrow(res) > 0L, 1L, 0L)
 }
 
-plays_w_pick_info <-
+plays_w_pick_off_info <-
   plays %>%
+  mutate(across(down, list(fct = factor))) %>% 
   left_join(
     pick_play_meta_init %>%
       # Keep the pick play to one row per play at maximum
@@ -102,97 +100,40 @@ plays_w_pick_info <-
   ) %>%
   mutate(
     has_intersect = map_lgl(pick_data, ~!is.null(.x)),
-    across(n_rusher, ~coalesce(.x, 0L)) # ,
-    # # pick_data = map_if(pick_data, is.null, ~tibble())
+    across(n_rusher, ~coalesce(.x, 0L))
   ) %>%
   relocate(game_id, play_id, has_intersect, pick_data) %>%
   left_join(
     pbp %>%
       mutate(
-        across(game_half, ~case_when(.x == 'Half1' ~ 1L, TRUE ~ 2L)),
+        across(roof, factor),
         is_home = if_else(home_team == posteam, 1, 0) %>% factor()
       ) %>% 
       select(
         game_id,
         play_id,
-        game_half,
+        # game_half,
         half_seconds_remaining,
         yardline_100,
         is_home,
         roof,
-        wp_nflfastr = wp,
-        wpa_nflfastr = wpa,
-        epa_nflfastr = epa,
+        # wp_nflfastr = wp,
+        # wpa_nflfastr = wpa,
+        # epa_nflfastr = epa,
         away_timeouts_remaining,
         home_timeouts_remaining
       ),
     by = c('game_id', 'play_id')
   ) %>%
   select(-pick_data) %>%
-  # mutate(across(has_intersect, ~coalesce(.x, FALSE)))
-  # Doing some mutations for the model fitting stuff.
   mutate(
-    across(has_intersect, ~if_else(.x, 1L, 0L) %>% factor()),
-    pre_snap_score_diff = pre_snap_home_score - pre_snap_visitor_score
-  ) %>%
-  left_join(
-    pbp %>%
-      group_by(game_id) %>%
-      arrange(game_seconds_remaining, .by_group = TRUE) %>%
-      fill(wp) %>%
-      ungroup() %>%
-      select(game_id, play_id, wp)
-  ) %>%
-  mutate(
-    across(c(quarter, down, game_half), list(fct = factor))
-  ) %>%
-  mutate(
-    across(
-      c(n_db, number_of_pass_rushers), 
-      list(fct = ~case_when(
-        .x < 4 ~ '<4',
-        .x > 6 ~ '>6',
-        TRUE ~ as.character(.x)
-      ) %>% 
-        fct_reorder(.x)
-      )
-    ),
-    across(
-      c(n_lb, n_dl, n_wr), 
-      list(fct = ~case_when(
-        .x < 2 ~ '<2',
-        .x > 4 ~ '>4',
-        TRUE ~ as.character(.x)
-      ) %>% 
-        fct_reorder(.x)
-      )
-    ),
-    across(
-      c(n_rb, n_te), 
-      list(fct = ~case_when(
-        .x < 1 ~ '<1',
-        .x > 2 ~ '>2',
-        TRUE ~ as.character(.x)
-      ) %>% 
-        fct_reorder(.x)
-      )
-    ),
-    across(
-      c(defenders_in_the_box), 
-      list(fct = ~case_when(
-        .x < 4 ~ '<4',
-        .x > 8 ~ '>8',
-        TRUE ~ as.character(.x)
-      ) %>% 
-        fct_reorder(.x)
-      )
-    )
+    across(has_intersect, ~if_else(.x, 1L, 0L) %>% factor())
   )
-plays_w_pick_info
-usethis::use_data(plays_w_pick_info, overwrite = TRUE)
+plays_w_pick_off_info
+usethis::use_data(plays_w_pick_off_info, overwrite = TRUE)
 
 viz_pick_play_frac <-
-  plays_w_pick_info %>% 
+  plays_w_pick_off_info %>% 
   count(tm = possession_team, has_intersect) %>% 
   group_by(tm) %>% 
   mutate(
@@ -220,10 +161,8 @@ viz_pick_play_frac <-
   )
 viz_pick_play_frac
 do_save_plot(viz_pick_play_frac)
-}
 
 # defense intersections, ending with pick_features df ----
-if(FALSE) {
 # Only want the ball snap and end rush frames, not the other event frames.
 events_end_rush <- .get_events_end_rush()
 features_min_init <-
@@ -372,194 +311,150 @@ plays_w_pick_def_info <-
 plays_w_pick_def_info
 usethis::use_data(plays_w_pick_def_info, overwrite = TRUE)
 
+# causal analysis ----
+# data('plays_w_pick_off_info', package = 'bdb2021')
+# data('plays_w_pick_def_info', package = 'bdb2021')
+# plays_w_pick_off_info %>% count(is_pass_successful, is_epa_neg = epa < 0)
+plays_w_pick_off_info_min <-
+  plays_w_pick_off_info %>%
+  select(
+    
+    # extra
+    game_id,
+    play_id,
+    is_pass_successful,
+    
+    epa, # response
+    is_target_picked, # treatment
+    
+    # stuff we already have that's redudndant with nflfastR covariates
+    
+    down_fct,
+    yards_to_go,
+    
+    # nflfastR stuff
+    
+    # game_half,
+    half_seconds_remaining,
+    yardline_100,
+    is_home,
+    roof,
+    away_timeouts_remaining,
+    home_timeouts_remaining
+  )
+
+plays_w_pick_def_info_min <-
+  plays_w_pick_def_info %>% 
+  filter(nfl_id == nfl_id_target) %>% 
+  select(
+    game_id, play_id, has_same_defender
+  )
+
+snap_frames <-
+  min_dists_naive_od_target %>%
+  group_by(game_id, play_id) %>%
+  filter(frame_id == min(frame_id)) %>%
+  ungroup() %>%
+  select(game_id, play_id, frame_id)
+snap_frames
+
+min_dists_naive_od_target_filt <-
+  min_dists_naive_od_target %>%
+  semi_join(snap_frames)
+min_dists_naive_od_target_filt
+
+features_wide <-
+  min_dists_naive_od_target_filt %>% 
+  select(-target_nfl_id) %>% 
+  inner_join(plays_w_pick_off_info_min) %>% 
+  inner_join(plays_w_pick_def_info_min)
+features_wide
+# arrow::write_parquet(features_wide, file.path('inst', 'features_wide.parquet'))
+
+.str_replace_f <- function(x, i) {
+  x %>% str_replace('(^.*)_(mean|sd)$', sprintf('\\%d', i))
 }
 
-# causal analysis ----
-if(TRUE) {
-  data('plays_w_pick_info', package = 'bdb2021')
-  data('plays_w_pick_def_info', package = 'bdb2021')
-  plays_w_pick_info %>% count(is_pass_successful, is_epa_neg = epa < 0)
-  plays_w_pick_info_min <-
-    plays_w_pick_info %>%
-    select(
-      
-      # extra
-      
-      game_id,
-      play_id,
-      is_pass_successful,
-      
-      epa, # response
-      is_target_picked, # treatment
-      
-      # stuff we already have that's redudndant with nflfastR covariates
-      
-      down_fct,
-      yards_to_go,
-      
-      # nflfastR stuff
-      
-      game_half,
-      half_seconds_remaining,
-      yardline_100,
-      is_home,
-      roof,
-      away_timeouts_remaining,
-      home_timeouts_remaining
-    )
-  
-  plays_w_pick_def_info_min <-
-    plays_w_pick_def_info %>% 
-    filter(nfl_id == nfl_id_target) %>% 
-    select(
-      game_id, play_id, has_same_defender
-    )
-  
-  snap_frames <-
-    min_dists_naive_od_target %>%
-    group_by(game_id, play_id) %>%
-    filter(frame_id == min(frame_id)) %>%
-    ungroup() %>%
-    select(game_id, play_id, frame_id)
-  snap_frames
-  
-  min_dists_naive_od_target_filt <-
-    min_dists_naive_od_target %>%
-    semi_join(snap_frames)
-  min_dists_naive_od_target_filt
+.get_valid_col_trt <- function() {
+  c('is_target_picked', 'has_same_defender')
+}
+.validate_col_trt <- function(x = .get_valid_col_trt()) {
+  match.arg(x)
+}
 
-  features_wide <-
-    min_dists_naive_od_target_filt %>% 
-    select(-target_nfl_id) %>% 
-    inner_join(plays_w_pick_info_min) %>% 
-    inner_join(plays_w_pick_def_info_min) %>% 
+.aggregate_to_sd_diffs <- function(data, col_trt) {
+  .validate_col_trt(col_trt)
+  cols_features <- 
+    c(
+      'x_o', 'x_d', 'dist_o', 'dist_d', 
+      'down_fct',
+      'yards_to_go',
+      'half_seconds_remaining',
+      'yardline_100',
+      'is_home',
+      'roof',
+      'away_timeouts_remaining',
+      'home_timeouts_remaining'
+    )
+  col_trt_sym <- col_trt %>% sym()
+  agg <-
+    data %>% 
+    select(one_of(c(cols_features, col_trt))) %>% 
     mutate(
-      epa_abs = epa %>% abs(),
-    )
-  features_wide
-  arrow::write_parquet(features_wide, file.path('inst', 'features_wide.parquet'))
+      across(where(is.double), ~if_else(.x == 9999, NA_real_, .x)),
+      across(where(is.factor), as.integer),
+      across(!!col_trt_sym, ~.x - 1L)
+    ) %>% 
+    group_by(!!col_trt_sym) %>% 
+    summarise(
+      across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)
+    ) %>% 
+    ungroup() %>% 
+    pivot_longer(
+      -one_of(col_trt)
+    ) %>% 
+    mutate(
+      across(
+        name,
+        list(
+          col = ~.str_replace_f(.x, 1),
+          stat = ~.str_replace_f(.x, 2)
+        ),
+        .names = '{fn}'
+      )
+    ) %>% 
+    select(-name)
+  agg
   
-  fmla_is_target_picked_prob_prop_chr <- 
-    'is_target_picked ~ game_half_fct + x_o + x_d + dist_o + dist_d + yardline_100 + pre_snap_score_diff*pre_snap_home_score + down_fct*yards_to_go'
-  fmla_is_target_picked_prob_prop <- 
-    fmla_is_target_picked_prob_prop_chr %>% as.formula()
+  res <-
+    agg %>% 
+    pivot_wider(
+      names_from = all_of(c('stat', col_trt)),
+      values_from = 'value'
+    ) %>% 
+    mutate(sd_diff = (mean_1 - mean_0) / sd_1)
+  res
+}
 
-  .str_replace_f <- function(x, i) {
-    x %>% str_replace('(^.*)_(mean|sd)$', sprintf('\\%d', i))
-  }
+do_causal_stuff <- function(col_trt) {
   
-  .aggregate_to_sd_diffs <- function(data) {
-    col_trt <- 'is_target_picked'
-    cols_features <- c('game_half_fct', 'down_fct', 'x_o', 'x_d', 'dist_o', 'dist_d', 'yardline_100', 'pre_snap_score_diff', 'yards_to_go', 'pre_snap_home_score')
-    col_trt_sym <- col_trt %>% sym()
-    agg <-
-      data %>% 
-      # Grab the original `n_wr` instead of `n_wr_fct`.
-      select(one_of(c(cols_features, col_trt))) %>% 
-      mutate(
-        across(where(is.double), ~if_else(.x == 9999, NA_real_, .x)),
-        across(where(is.factor), as.integer),
-        across(!!col_trt_sym, ~.x - 1L)
-      ) %>% 
-      group_by(!!col_trt_sym) %>% 
-      summarise(
-        across(where(is.numeric), list(mean = mean, sd = sd), na.rm = TRUE)
-      ) %>% 
-      ungroup() %>% 
-      pivot_longer(
-        -one_of(col_trt)
-      ) %>% 
-      mutate(
-        across(
-          name,
-          list(
-            col = ~.str_replace_f(.x, 1),
-            stat = ~.str_replace_f(.x, 2)
-          ),
-          .names = '{fn}'
-        )
-      ) %>% 
-      select(-name)
-    agg
-    
-    res <-
-      agg %>% 
-      pivot_wider(
-        names_from = all_of(c('stat', col_trt)),
-        values_from = 'value'
-      ) %>% 
-      mutate(sd_diff = (mean_1 - mean_0) / sd_1)
-    res
-  }
+  col_trt <- 'is_target_picked'
+  fmla_chr <-
+    sprintf('%s ~ x_o + x_d + dist_o + dist_d + half_seconds_remaining + yardline_100 + away_timeouts_remaining + home_timeouts_remaining + roof + is_home + down_fct*yards_to_go', col_trt)
+  fmla <- fmla_chr %>% as.formula()
   
-  path_fit_bart <- file.path(get_bdb_dir_data(), 'fit_bart.rds')
-  if(!file.exists(path_fit_bart)) {
-  rec <-
+  fit <-
     features_wide %>% 
-    # recipes::recipe(formula(is_target_picked ~ .), .) %>% 
-    recipes::recipe(formula(epa ~ is_target_picked + game_half_fct + x_o + x_d + dist_o + dist_d + yardline_100 + pre_snap_score_diff + pre_snap_home_score + down_fct + yards_to_go), .) %>% 
-    # recipes::update_role(game_id, play_id, epa, epa_abs, is_pass_successful, has_same_defender, new_role = 'id') %>% 
-    # recipes::step_normalize(recipes::all_numeric()) %>% 
-    recipes::step_dummy(recipes::all_nominal()) %>% 
-    recipes::step_interact(terms = ~(pre_snap_score_diff * pre_snap_home_score)) %>% 
-    recipes::step_interact(terms = ~(matches('^down') * yards_to_go))
-  rec
-  df <- rec %>% recipes::prep() %>% recipes::juice()
-  y <- df[['epa']]
-  x <- df[,setdiff(names(df), 'epa')] %>% as.data.frame()
-  # require(BART)
-  # require(coda)
-  fit_bart_1 <- BART::wbart(x.train = x, y.train = y)
-  
-  # fit_bart_2 <- BART::wbart(x.train = x, y.train = y)
-  write_rds(fit_bart_1, path_fit_bart)
-  } else {
-    fit_bart_1 <- path_fit_bart %>% read_rds()
-  }
-  fit_bart_1$sigma %>% plot(type = 'l')
-  abline(v = 100, lwd = 2, col = 'red')
-  # preds <- predict(fit_bart_1, newdata = x)
-  fit_lm <- lm(formula(epa ~ .), df)
-  mat <- cbind(y, fit_bart_1$yhat.train.mean, fit_lm$fitted.values)
-  colnames(mat) <- c('y', 'bart', 'lm')
-  mat_cor <- mat %>% cor()
-  mat_cor
-  mat %>% pairs()
-
-  # rhat <- gelman.diag(mcmc.list(mcmc(fit_bart_1$yhat.train), mcmc(fit_bart_2$yhat.train)), multivariate = FALSE)
-  # ess <- effectiveSize(mcmc.list(mcmc(fit_bart_1$yhat.train), mcmc(fit_bart_2$yhat.train)))
-  # rhat
-  # ess
-  cols_profile <- 'yardline_100'
-  apply(df[, cols_profile], FUN =sd, MARGIN = 2)
-  
-  spec <-
-    # parsnip::logistic_reg() %>% 
-    # parsnip::set_engine('glm') %>% 
-    parsnip::rand_forest() %>% 
-    parsnip::set_engine('randomForest') %>% 
-    parsnip::set_mode('classification')
-  wf <-
-    workflows::workflow() %>% 
-    workflows::add_recipe(rec) %>% 
-    workflows::add_model(spec)
-  fit <- parsnip::fit(wf, features_wide)
-  fit %>% workflows::pull_workflow_fit() %>% vip::vip(100)
-  fit %>% broom::tidy()
-  
-  fit_is_target_picked_prob_prop <-
-    features_wide %>% 
-    glm(fmla_is_target_picked_prob_prop, data = ., family = stats::binomial)
-  fit_is_target_picked_prob_prop
+    glm(fmla, data = ., family = stats::binomial)
+  fit
   
   res_match <-
     Matching::Match(
       caliper = 0.25,
       ties = FALSE,
-      X = fit_is_target_picked_prob_prop %>% fitted(),
-      # X = model.matrix(fmla, features_wide),
+      X = fit %>% fitted(),
       Y = features_wide[['epa']],
-      Tr = features_wide[['is_target_picked']] %>% as.integer() %>% {. - 1L}
+      Tr = features_wide[[col_trt]] %>% as.integer() %>% {. - 1L}
     )
   # # Lots of unnecesary stuff.
   # res_match
@@ -573,8 +468,8 @@ if(TRUE) {
   
   sd_diffs <-
     bind_rows(
-      features_wide %>% .aggregate_to_sd_diffs() %>% mutate(grp = 'Un-adjusted'),
-      features_match %>% .aggregate_to_sd_diffs() %>% mutate(grp = 'Adjusted')
+      features_wide %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp = 'Un-adjusted'),
+      features_match %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp = 'Adjusted')
     ) %>% 
     mutate(
       across(grp, ~.x %>% fct_inorder())
@@ -590,7 +485,16 @@ if(TRUE) {
     arrange(rnk)
   sd_diffs_rnk
   
-  viz_love_is_target_picked_prob <-
+  if(col_trt == 'is_target_picked') {
+    title_suffix_1 <- 'targeted pick play'
+    title_suffix_2 <- 'targeted picks'
+  } else if (col_trt == 'has_same_defender') {
+    title_suffix_1 <- 'targeted defender coverage'
+    title_suffix_2 <- 'coverage'
+  }
+  file_suffix <- col_trt
+  
+  viz_love <-
     sd_diffs %>% 
     left_join(sd_diffs_rnk) %>% 
     mutate(across(col, ~fct_reorder(.x, -rnk))) %>% 
@@ -608,30 +512,31 @@ if(TRUE) {
       legend.position = 'top'
     ) +
     labs(
-      title = 'Bias among coefficients for pick play model after matching',
+      title = sprintf('Bias among coefficients for %s probability model', title_suffix_1),
       x = 'Absolute standardized mean difference',
       y = NULL
     )
-  viz_love_is_target_picked_prob
-  do_save_plot(viz_love_is_target_picked_prob)
+  viz_love
+  do_save_plot(viz_love, file = sprintf('viz_love_%s', file_suffix))
   
-  fmla_epa_w_picks_chr <-
-    fmla_is_target_picked_prob_prop_chr %>% 
+  fmla_epa_chr <-
+    fmla_chr %>% 
+    # Unfortunately can't put `col_trt` on the left-hand side here, so replace it afterwards.
     str_replace_all(
       c(
-        'is_target_picked' = 'epa_abs',
-        '~' = '~ is_target_picked + '
+        '~' = sprintf('~ %s + ', col_trt)
       )
     )
-  fmla_epa_w_picks <- fmla_epa_w_picks_chr %>% as.formula()
+  fmla_epa_chr <- fmla_epa_chr %>% str_replace('.*[~]', 'epa ~')
+  fmla_epa <- fmla_epa_chr %>% as.formula()
   
-  fit_epa_w_picks <-
+  fit_epa <-
     features_match %>% 
-    lm(fmla_epa_w_picks, data = .)
-  fit_epa_w_picks
+    lm(fmla_epa, data = .)
+  fit_epa
   
-  coefs_epa_w_picks <-
-    fit_epa_w_picks %>%
+  coefs_epa <-
+    fit_epa %>%
     broom::tidy() %>%
     mutate(
       across(term, ~fct_reorder(.x, estimate)),
@@ -639,10 +544,10 @@ if(TRUE) {
       hi = estimate + 1.96 * std.error,
       is_signif = if_else(p.value < 0.05, TRUE, FALSE)
     )
-  coefs_epa_w_picks
-
-  viz_epa_w_picks_coefs <-
-    coefs_epa_w_picks %>%
+  coefs_epa
+  
+  viz_epa <-
+    coefs_epa %>%
     ggplot() +
     aes(y = term, x = estimate, color = is_signif) +
     geom_point(size = 2) +
@@ -657,150 +562,40 @@ if(TRUE) {
       # legend.box = element_rec()
     ) +
     labs(
-      title = 'Linear regression EPA model coefficients, adjusting for pick plays',
+      title = sprintf('Linear regression EPA model coefficients, adjusting for %s', title_suffix_2),
       y = NULL, x = 'Estimate +- 1.96 standard error'
     )
-  viz_epa_w_picks_coefs
-  do_save_plot(viz_epa_w_picks_coefs)
-
-  # don't need this quite yet
-  .binary_factor_to_lgl <- function(x) {
-    x %>% as.integer() %>% {. - 1L} %>% as.logical()
-  }
-  
-  .simplify_pick_features <- function(data) {
-    data %>% 
-      mutate(
-        across(c(is_target_picked, is_pass_successful, has_same_defender), .binary_factor_to_lgl),
-        across(
-          is_target_picked, ~sprintf('Target Is Picked? %s', ifelse(.x, 'Y', 'N'))
-        ),
-        across(
-          is_pass_successful, ~sprintf('Pass Successful? %s', ifelse(.x, 'Y', 'N'))
-        ),
-        across(
-          has_same_defender, ~sprintf('Same Defender? %s', ifelse(.x, 'Y', 'N'))
-        )
-      ) %>%
-      select(is_target_picked, is_pass_successful, is_same_defender = has_same_defender, epa)
-  }
-  
-  # def ----
-  fmla_has_same_defender_prob_prop_chr <-
-    fmla_is_target_picked_prob_prop_chr %>% 
-    str_replace_all(
-      c(
-        'is_target_picked' = 'has_same_defender'
-      )
-    ) %>% 
-    paste0('')
-  
-  fmla_has_same_defender_prob_prop <- fmla_has_same_defender_prob_prop_chr %>% as.formula()
-  
-  res_match <-
-    Matching::Match(
-      caliper = 0.25,
-      ties = FALSE,
-      X = fit_is_target_picked_prob_prop %>% fitted(),
-      # X = model.matrix(fmla, features_wide),
-      Y = features_wide[['epa_abs']],
-      Tr = features_wide[['is_target_picked']] %>% as.integer() %>% {. - 1L}
-    )
-  # # Lots of unnecesary stuff.
-  # res_match
-  
-  control_match <- features_wide[res_match[['index.control']], ]
-  treatment_match <- features_wide[res_match[['index.treated']], ]
-  features_match <- 
-    bind_rows(
-      control_match %>% mutate(grp = 'control'), 
-      treatment_match %>% mutate(grp = 'treatment')
-    )
+  viz_epa
+  do_save_plot(viz_epa, file = sprintf('viz_epa_%s', file_suffix))
   features_match
-  
-  .str_replace_f <- function(x, i) {
-    x %>% str_replace('(^.*)_(mean|sd)$', sprintf('\\%d', i))
-  }
-  
-  fit_has_same_defender_prob_prop <-
-    features_wide %>% 
-    # filter(is_pass_successful == '0') %>% 
-    filter(is_target_picked == '1') %>% 
-    glm(fmla_has_same_defender_prob_prop, data = ., family = stats::binomial)
-  fit_has_same_defender_prob_prop
-  
-  # features_wide %>% .simplify_pick_features()
-  
-  fmla_epa_w_picks_def_chr <-
-    fmla_is_target_picked_prob_prop_chr %>% 
-    str_replace_all(
-      c(
-        # 'is_target_picked' = 'has_same_defender*is_target_picked'
-        'is_target_picked' = 'has_same_defender*is_target_picked'
-      )
-    ) %>% 
-    paste0('')
-  fmla_epa_w_picks_def <- fmla_epa_w_picks_def_chr %>% as.formula()
-  # fmla_epa_w_picks_def <- formula(abs(epa) ~ has_same_defender*is_target_picked)
-  
-  fit_epa_w_picks_def <-
-    features_match %>% 
-    # filter(is_pass_successful == '0') %>% 
-    filter(is_target_picked == '1') %>% 
-    lm(fmla_epa_w_picks_def, data = .)
-  fit_epa_w_picks_def
-  
-  coefs_epa_w_picks_def <-
-    fit_epa_w_picks_def %>%
-    broom::tidy() %>%
-    mutate(
-      across(term, ~fct_reorder(.x, estimate)),
-      lo = estimate - 1.96 * std.error,
-      hi = estimate + 1.96 * std.error,
-      is_signif = if_else(p.value < 0.05, TRUE, FALSE)
-    )
-  coefs_epa_w_picks_def
-  
-  viz_epa_w_picks_def_coefs <-
-    coefs_epa_w_picks_def %>%
-    ggplot() +
-    aes(y = term, x = estimate, color = is_signif) +
-    geom_point(size = 2) +
-    geom_errorbarh(aes(xmin = lo, xmax = hi), size = 1) +
-    scale_color_manual(values = c(`TRUE` = 'red', `FALSE` = 'black')) +
-    geom_vline(data = tibble(), aes(xintercept = 0), linetype = 2) +
-    guides(color = guide_legend('Is statistically significant?')) +
-    theme(
-      legend.text = element_text(size = 12),
-      legend.title = element_text(size = 12),
-      legend.position = 'top' # ,
-      # legend.box = element_rec()
-    ) +
-    labs(
-      title = 'Linear regression EPA model coefficients, adjusting for pick plays',
-      y = NULL, x = 'Estimate +- 1.96 standard error'
-    )
-  viz_epa_w_picks_def_coefs
-  do_save_plot(viz_epa_w_picks_def_coefs)
-  
 }
 
-# t test stuff ----
-if(FALSE) {
 
-# .simplify_pick_features <- function(data) {
-#   data %>% 
-#     mutate(
-#       across(c(has_intersect, is_pass_successful), .binary_factor_to_lgl),
-#       across(
-#         has_intersect, ~sprintf('Target Is Picked? %s', ifelse(.x, 'Y', 'N'))
-#       ),
-#       across(
-#         is_pass_successful, ~sprintf('Pass Successful? %s', ifelse(.x, 'Y', 'N'))
-#       )
-#     ) %>%
-#     select(is_target_picked = has_intersect, is_pass_successful, epa)
-# }
+# .get_valid_col_trt() %>% walk(do_causal_stuff)
+features_match_is_target_picked <- 'is_target_picked' %>% do_causal_stuff()
+features_match_has_same_defender <- 'has_same_defender' %>% do_causal_stuff()
+
+# t test stuff ----
+.binary_factor_to_lgl <- function(x) {
+  x %>% as.integer() %>% {. - 1L} %>% as.logical()
+}
+
+.simplify_pick_features <- function(data) {
+  data %>% 
+    mutate(
+      across(c(is_target_picked, is_pass_successful, has_same_defender), .binary_factor_to_lgl),
+      across(
+        is_target_picked, ~sprintf('Target Is Picked? %s', ifelse(.x, 'Y', 'N'))
+      ),
+      across(
+        is_pass_successful, ~sprintf('Pass Successful? %s', ifelse(.x, 'Y', 'N'))
+      ),
+      across(
+        has_same_defender, ~sprintf('Same Defender? %s', ifelse(.x, 'Y', 'N'))
+      )
+    ) %>%
+    select(is_target_picked, is_pass_successful, is_same_defender = has_same_defender, epa)
+}
 
 # gtsummary offensive t tests----
 .f_gtsummary <- function(data, by) {
@@ -818,7 +613,7 @@ if(FALSE) {
 }
 
 do_save_t_test_tabs <- function(data, suffix = NULL, sep = '_') {
-
+  
   t1 <-
     data %>%
     select(is_pass_successful, epa) %>% 
@@ -852,12 +647,30 @@ do_save_t_test_tabs <- function(data, suffix = NULL, sep = '_') {
   res
 }
 
-features_wide %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'unadjusted')
-features_match %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'adjusted')
+features_wide_simple <- 
+  features_wide %>% 
+  .simplify_pick_features()
+
+features_wide_simple %>% 
+  do_save_t_test_tabs(suffix = 'unadjusted')
+
+features_match_is_target_picked_simple <- 
+  features_match_is_target_picked %>% 
+  .simplify_pick_features()
+
+features_match_is_target_picked_simple %>% 
+  do_save_t_test_tabs(suffix = 'adjusted_is_target_picked')
+
+features_match_has_same_defender_simple <- 
+  features_match_has_same_defender %>% 
+  .simplify_pick_features()
+
+features_match_has_same_defender_simple %>% 
+  do_save_t_test_tabs(suffix = 'adjusted_has_same_defender')
 
 # non gtsummary offensive pick play t tests----
 .f_agg_epa <- function(data) {
-
+  
   data %>% 
     group_by(is_target_picked, is_pass_successful) %>% 
     summarize(across(c(epa), list(median = median, q25 = ~quantile(.x, 0.25), q75 = ~quantile(.x, 0.75)), .names = '{fn}')) %>% 
@@ -868,7 +681,7 @@ features_match %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'a
 }
 
 .f_agg_n <- function(data) {
-
+  
   data %>% 
     group_by(is_target_picked, is_pass_successful) %>% 
     summarize(n = n()) %>% 
@@ -892,7 +705,7 @@ features_match %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'a
 }
 
 .f_gt <- function(data, subtitle) {
-
+  
   data %>% 
     rename(`Pass Successful?` = is_pass_successful) %>% 
     gt::gt() %>% 
@@ -914,26 +727,20 @@ features_match %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'a
 }
 
 do_save_epa_tabs <- function(data, subtitle = NULL, suffix = NULL, sep = '_') {
-  # browser()
-  # data <- features_wide %>% .simplify_pick_features(); subtitle = NULL; suffix = NULL; sep = '_'
+
   tab_epa <- 
     data %>% 
     .f_agg_epa() %>% 
     .f_pivot_agg()
   tab_epa
-
+  
   .t_test_target <- function(cnd = c('Y', 'N')) {
-    # cnd <- match.arg(cnd)
     t.test(epa ~ is_target_picked, data = data %>% filter(is_pass_successful %>% str_detect(sprintf('%s$', cnd))))
   }
-  # .t_test_success <- function(cnd = c('Y', 'N')) {
-  #   # cnd <- match.arg(cnd)
-  #   t.test(epa ~ is_pass_successful, data = data %>% filter(is_target_picked %>% str_detect(sprintf('%s$', cnd))))
-  # }
+
   t_target_y <- .t_test_target('Y')
   t_target_n <- .t_test_target('N')
-  # t_success_y <- .t_test_success('Y')
-  # t_success_n <- .t_test_success('N')
+
   tab_epa['t-test p-value'] <- 
     c(t_target_n$p.value, t_target_y$p.value) %>% 
     sprintf('%0.03f', .)
@@ -947,13 +754,24 @@ do_save_epa_tabs <- function(data, subtitle = NULL, suffix = NULL, sep = '_') {
   }
   tab_epa %>% .f_gt(subtitle = subtitle) %>% .f_save_gt(suffix = suffix, prefix = 'epa')
   tab_n %>% .f_gt(subtitle = subtitle) %>% .f_save_gt(suffix = suffix, prefix = 'n')
-  # list(epa = tab_epa, n = tab_n)
   invisible()
 }
 
-features_wide %>% .simplify_pick_features() %>% do_save_epa_tabs(suffix = 'unadjusted_nosubtitle')
-features_wide %>% .simplify_pick_features() %>% do_save_epa_tabs(subtitle = 'Before matching', suffix = 'unadjusted')
-features_match %>% .simplify_pick_features() %>% do_save_epa_tabs(subtitle = 'After matching', suffix = 'adjusted')
+features_wide_simple %>%
+  do_save_epa_tabs(suffix = 'unadjusted_nosubtitle')
 
-# defense t tests----
-}
+features_wide_simple %>% 
+  do_save_epa_tabs(subtitle = 'Before matching', suffix = 'unadjusted')
+
+features_match_is_target_picked_simple %>% 
+  do_save_epa_tabs(
+    subtitle = 'After matching for targeted pick plays', 
+    suffix = 'adjusted_is_target_picked'
+  )
+
+features_match_has_same_defender_simple %>% 
+  do_save_epa_tabs(
+    subtitle = 'After matching for targeted defender coverage', 
+    suffix = 'adjusted_has_same_defender'
+  )
+
