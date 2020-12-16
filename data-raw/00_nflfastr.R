@@ -318,6 +318,14 @@ params <-
     min_child_weight = 1
   )
 
+pick_features <- 'inst/features_wide.parquet' %>% arrow::read_parquet()
+model_data_bdb <-
+  model_data %>% 
+  inner_join(
+    pick_features %>% 
+      select(game_id, play_id, is_target_picked, has_same_defender, epa_bdb = epa)
+  )
+
 .ep_model_select <- function(pbp, ...) {
   pbp %>% 
     dplyr::select(
@@ -338,6 +346,7 @@ params <-
     )
 }
 
+if(FALSE) {
 model_mat <- 
   model.matrix(
     ~.+0, 
@@ -346,8 +355,6 @@ model_mat <-
       .ep_model_select()
   )
 model_mat
-model_mat %>% nrow()
-model_data$label %>% length()
 
 full_train <-
   xgboost::xgb.DMatrix(
@@ -355,7 +362,7 @@ full_train <-
     label = model_data$label,
     weight = model_data$Total_W_Scaled
   )
-full_train
+
 ep_model <- 
   xgboost::xgboost(
     params = params, 
@@ -366,6 +373,7 @@ ep_model <-
 path_ep_model <- file.path('inst', 'ep_model')
 xgboost::xgb.save(ep_model, path_ep_model)
 
+# no weight and no dgmatrix maybe makes it easier to work with with other packages?
 ep_model_nowt <- 
   xgboost::xgboost(
     params = params, 
@@ -377,7 +385,8 @@ ep_model_nowt <-
 path_ep_model_nowt <- file.path('inst', 'ep_model_nowt')
 xgboost::xgb.save(ep_model, path_ep_model_nowt)
 
-library(iml)
+# iml ----
+# https://github.com/christophM/interpretable-ml-book/blob/master/manuscript/05.2-agnostic-pdp.Rmd
 df <- model_mat %>% as.data.frame()
 .f_predict <- function(object, newdata) {
   newdata <- xgboost::xgb.DMatrix(data.matrix(newdata), missing = NA)
@@ -395,3 +404,260 @@ pred <- iml::Predictor$new(
 # shap <- iml::Shapley$new(pred, x.interest = df[1,], sample.size = 10)
 pdp <- iml::FeatureEffect$new(pred, feature = 'down3', method = 'ice')
 pdp$plot()
+
+# generic shap ----
+# https://bradleyboehmke.github.io/HOML/iml.html#xgboost-and-built-in-shapley-values
+feature_values_init <-
+  model_mat %>%
+  as.data.frame() %>%
+  as_tibble() %>% 
+  mutate_all(scale) %>%
+  gather(feature, feature_value)
+feature_values_init
+
+feature_values <-
+  feature_values_init %>% 
+  pull(feature_value)
+feature_values %>% length() %>% {. * 7}
+shap_df_init <-
+  ep_model %>% 
+  predict(newdata = full_train, predcontrib = TRUE) %>%
+  as.data.frame() %>%
+  as_tibble() %>% 
+  select(-matches('BIAS'))
+shap_df_init
+
+shap_df <-
+  shap_df_init %>% 
+  gather(feature, shap_value) %>%
+  # mutate(feature_value = feature_values) %>%
+  group_by(feature) %>%
+  mutate(shap_importance = mean(abs(shap_value)))
+shap_df
+
+p1 <- ggplot(shap_df, aes(x = shap_value, y = reorder(feature, shap_importance))) +
+  ggbeeswarm::geom_quasirandom(groupOnX = FALSE, varwidth = TRUE, size = 0.4, alpha = 0.25) +
+  xlab("SHAP value") +
+  ylab(NULL)
+p1
+
+p2 <- shap_df %>% 
+  select(feature, shap_importance) %>%
+  filter(row_number() == 1) %>%
+  ggplot(aes(x = reorder(feature, shap_importance), y = shap_importance)) +
+  geom_col() +
+  coord_flip() +
+  xlab(NULL) +
+  ylab("mean(|SHAP value|)")
+p2
+
+gridExtra::grid.arrange(p1, p2, nrow = 1)
+}
+
+# bdb ep ----
+.binary_factor_to_int <- function(x) {
+  x %>% as.integer() %>% {. - 1L}
+}
+
+.bdb_model_select <- function(data, ...) {
+  data %>% 
+    .ep_model_select(is_target_picked, has_same_defender) %>% 
+    mutate(
+      across(c(is_target_picked, has_same_defender), .binary_factor_to_int),
+      is_target_picked1 = if_else(is_target_picked == 1, 1, 0), 
+      is_target_picked0 = if_else(is_target_picked == 0, 1, 0),
+      has_same_defender1 = if_else(has_same_defender == 1, 1, 0), 
+      has_same_defender0 = if_else(has_same_defender == 0, 1, 0)
+    ) %>% 
+    select(-c(is_target_picked, has_same_defender))
+}
+
+model_mat_bdb <- 
+  model.matrix(
+    ~.+0, 
+    data = model_data_bdb %>% .bdb_model_select()
+  )
+model_mat_bdb
+
+full_train_bdb_ep <-
+  xgboost::xgb.DMatrix(
+    model_mat_bdb,
+    label = model_data_bdb$label,
+    weight = model_data_bdb$Total_W_Scaled
+  )
+
+ep_model_bdb <- 
+  xgboost::xgboost(
+    params = params, 
+    data = full_train_bdb_ep, 
+    nrounds = nrounds, 
+    verbose = 2
+  )
+path_ep_model_bdb <- file.path('inst', 'ep_model_bdb')
+xgboost::xgb.save(ep_model_bdb, path_ep_model_bdb)
+
+feature_values_init <-
+  model_mat_bdb %>%
+  as.data.frame() %>%
+  # as_tibble() %>% 
+  mutate_all(scale) %>%
+  # pivot_longer(matches('.*'), names_to = 'feature', values_to = 'feature_value'
+  gather(feature, feature_value) %>% 
+  as_tibble()
+feature_values_init
+
+feature_values <-
+  feature_values_init %>% 
+  pull(feature_value)
+feature_values %>% length()
+
+shap_df_init <-
+  ep_model_bdb %>% 
+  predict(newdata = full_train_bdb_ep, predcontrib = TRUE) %>%
+  as.data.frame() %>%
+  as_tibble() %>% 
+  select(-matches('BIAS'))
+shap_df_init
+
+shap_df <-
+  shap_df_init %>% 
+  mutate(idx = row_number()) %>% 
+  pivot_longer(-idx, names_to = 'feature', values_to = 'shap_value') %>%
+  # gather(feature, shap_value) %>% 
+  # mutate(feature_value = feature_values) %>%
+  separate(feature, into = c('feature', 'feature_idx'), sep = '[.]') %>% 
+  mutate(across(feature_idx, ~coalesce(.x, '0') %>% as.integer() %>% {. + 1L}))
+
+shap_agg_by_idx <-
+  shap_df %>% 
+  left_join(
+    tibble(
+      feature_idx = seq(1, 7, by = 1),
+      pts = c(7, -7, 3, -3, 2, -2, 0)
+    )
+  ) %>% 
+  mutate(ep = shap_value * pts) %>% 
+  group_by(idx, feature) %>% 
+  summarize(
+    across(c(ep, shap_value), sum)
+  ) %>% 
+  ungroup()
+shap_agg_by_idx
+
+shap_agg_by_feature <-
+  shap_agg_by_idx %>% 
+  group_by(feature) %>% 
+  summarize(
+    across(c(ep, shap_value), ~mean(abs(.x))),
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    across(c(ep, shap_value), list(rnk = ~row_number(desc(.x))))
+  ) %>% 
+  arrange(shap_value_rnk)
+shap_agg_by_feature
+
+p1 <- ggplot(shap_df, aes(x = shap_value, y = reorder(feature, shap_importance))) +
+  ggbeeswarm::geom_quasirandom(groupOnX = FALSE, varwidth = TRUE, size = 0.4, alpha = 0.25) +
+  xlab("SHAP value") +
+  ylab(NULL)
+p1
+ggsave(p1, filename = file.path(get_bdb_epa_dir_figs(), 'shap_swarm.png'))
+
+# SHAP importance plot
+p2 <- shap_df %>% 
+  select(feature, shap_importance) %>%
+  filter(row_number() == 1) %>%
+  ungroup() %>% 
+  arrange(-shap_importance) %>% 
+  slice(c(1:20)) %>% 
+  ggplot(aes(x = reorder(feature, shap_importance), y = shap_importance)) +
+  geom_col() +
+  coord_flip() +
+  xlab(NULL) +
+  ylab("mean(|SHAP value|)")
+p2
+
+# bdb epa ----
+if(FALSE) {
+full_train_bdb_epa <-
+  xgboost::xgb.DMatrix(
+    model_mat_bdb,
+    label = model_data_bdb$epa_bdb,
+    weight = model_data_bdb$Total_W_Scaled
+  )
+
+# just guessing on these params
+nrounds_bdb_epa <- 500
+params_bdb_epa <-
+  list(
+    # booster = 'gbtree',
+    objective = 'reg:squarederror',
+    eval_metric = c('rmse'),
+    eta = 0.025,
+    # gamma = 1,
+    # subsample = 0.8,
+    # colsample_bytree = 0.8,
+    max_depth = 5,
+    min_child_weight = 1
+  )
+
+epa_model_bdb <- 
+  xgboost::xgboost(
+    params = params_bdb_epa, 
+    data = full_train_bdb_epa, 
+    nrounds = nrounds_bdb_epa, 
+    verbose = 2
+  )
+path_epa_model_bdb <- file.path('inst', 'ep_model_bdba')
+xgboost::xgb.save(epa_model_bdb, path_epa_model_bdb)
+
+feature_values_init <-
+  model_data_bdb %>%
+  as.data.frame() %>%
+  as_tibble() %>% 
+  mutate_all(scale) %>%
+  gather(feature, feature_value)
+feature_values_init
+
+feature_values <-
+  feature_values_init %>% 
+  pull(feature_value)
+feature_values %>% length()
+
+shap_df_init <-
+  epa_model_bdb %>% 
+  predict(newdata = full_train_bdb_epa, predcontrib = TRUE) %>%
+  as.data.frame() %>%
+  as_tibble() %>% 
+  select(-matches('BIAS'))
+shap_df_init
+
+shap_df <-
+  shap_df_init %>% 
+  gather(feature, shap_value) %>%
+  mutate(feature_value = feature_values) %>%
+  group_by(feature) %>%
+  mutate(shap_importance = mean(abs(shap_value)))
+shap_df
+
+shap_df %>% mutate(rnk = row_number(shap_importance)) %>% filter(rnk <= 20)
+
+p1 <- ggplot(shap_df, aes(x = shap_value, y = reorder(feature, shap_importance))) +
+  ggbeeswarm::geom_quasirandom(groupOnX = FALSE, varwidth = TRUE, size = 0.4, alpha = 0.25) +
+  xlab("SHAP value") +
+  ylab(NULL)
+p1
+ggsave(p1, filename = file.path(get_bdb_epa_dir_figs(), 'shap_swarm.png'))
+
+# SHAP importance plot
+p2 <- shap_df %>% 
+  select(feature, shap_importance) %>%
+  filter(row_number() == 1) %>%
+  ggplot(aes(x = reorder(feature, shap_importance), y = shap_importance)) +
+  geom_col() +
+  coord_flip() +
+  xlab(NULL) +
+  ylab("mean(|SHAP value|)")
+p2
+}

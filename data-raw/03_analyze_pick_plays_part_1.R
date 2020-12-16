@@ -533,7 +533,6 @@ if(TRUE) {
   cols_profile <- 'yardline_100'
   apply(df[, cols_profile], FUN =sd, MARGIN = 2)
   
-  
   spec <-
     # parsnip::logistic_reg() %>% 
     # parsnip::set_engine('glm') %>% 
@@ -853,7 +852,7 @@ do_save_t_test_tabs <- function(data, suffix = NULL, sep = '_') {
   res
 }
 
-features_wide %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'nonadjusted')
+features_wide %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'unadjusted')
 features_match %>% .simplify_pick_features() %>% do_save_t_test_tabs(suffix = 'adjusted')
 
 # non gtsummary offensive pick play t tests----
@@ -952,7 +951,8 @@ do_save_epa_tabs <- function(data, subtitle = NULL, suffix = NULL, sep = '_') {
   invisible()
 }
 
-features_wide %>% .simplify_pick_features() %>% do_save_epa_tabs(subtitle = 'Before matching', suffix = 'nonadjusted')
+features_wide %>% .simplify_pick_features() %>% do_save_epa_tabs(suffix = 'unadjusted_nosubtitle')
+features_wide %>% .simplify_pick_features() %>% do_save_epa_tabs(subtitle = 'Before matching', suffix = 'unadjusted')
 features_match %>% .simplify_pick_features() %>% do_save_epa_tabs(subtitle = 'After matching', suffix = 'adjusted')
 
 # defense t tests----

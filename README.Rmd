@@ -13,23 +13,29 @@ knitr::opts_chunk$set(
 )
 ```
 
-*Note to the reader: Although I refer to myself as "we" in much of this notebook, note that I'm just one person and have he/his pronouns. I just happen to like how "we" sounds when writing things out in a pseudo-research setting. I promise I do not have some kind of God complex.*
-
 # Introduction
 
 ## Execuive Summary
 
-Using [Frequentist analysis](https://en.wikipedia.org/wiki/Frequentist_inference), we find that "non-man" coverage (anything that is not clearly man coverage, which certainly includes pure zone, but which may also include "matchup" man coverage) is significantly less successful (in terms of EPA) against pick route combinations where one of the involved receivers is targeted, as compared to the same such coverage against plays where the targeted receiver is not involved in a pick combination. Additionally, we find that there is no significant difference in playing man coverage against pick route combinations involving the eventual targeted receiver compared to man coverage in other plays. (This deduction is not necessarily implied by the prior conclusion.)
+Using [Frequentist analysis](https://en.wikipedia.org/wiki/Frequentist_inference), I find that "non-man" coverage[^1] is significantly less successful, in terms of expected points added (EPA), against pick route combinations where one of the involved receivers is targeted, as compared to the same such coverage against plays where the targeted receiver is not involved in a pick combination. However, when using a causal approach, I find no evidence for targeted picks having a significant effect on play success. Likewise,
 
-Using a causal approach, accounting for play context, we come to ...
+[^1]: As discussed later, I refer to coverage as "non-man" if the assigned defender for a given receiver at the time of the throw is not the same as the assigned defender at the time of the snap. Put another way, it's basically anything that is not distinctly man coverage, which certainly includes zone, but which may also include "matchup" man coverage.
+
+[^2]: I may refer to these simply as "targeted picks" going forward.
+
+Moreover, I find that there is no significant difference in playing man coverage against pick route combinations involving the eventual targeted receiver compared to man coverage in other plays. (This deduction is not necessarily implied by the prior conclusion.)
 
 ## Motivation
 
 > "Offensive coordinators call them rub concepts. Defensive coordinators call them illegal pick plays. Whatever you call them, they are hard to defend... offenses are designing these plays and training their receivers to essentially set screens to get their teammates wide open. Technically, it's against the rule to set a pick deliberately, but referees have a hard time judging intentions and they rarely penalize these plays". - [Ted Nguyen, USA Football, 2017](https://blogs.usafootball.com/blog/4177/rub-concepts-how-to-defend-them-and-how-offenses-can-counteract-it)
 
-The table below provides some evidence for the success of pick plays relative to all other passing plays, in terms of expected points added (EPA).
+The table below provides some evidence for the success of pick plays relative to all other passing plays. a student's t-test, which account for relative sample size, indicates
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/t_test_simple.png)
+![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_epa_nonadjusted.png)
+
+For context, the table below delineates frequency. (The relative difference in frequencies are accounted for by t-test.)
+
+![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_n_nonadjusted.png)
 
 To provide an illustration of the impact pick plays can have, below is the pick play that resulted in the highest expected points added (EPA) in the 2018 season.
 
