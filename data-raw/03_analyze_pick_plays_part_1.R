@@ -389,7 +389,7 @@ features_wide
   .validate_col_trt(col_trt)
   cols_features <- 
     c(
-      'x_o', 'x_d', 'dist_o', 'dist_d', 
+      'x', 'y', 'x_o', 'x_d', 'dist_o', 'dist_d', 
       'down_fct',
       'yards_to_go',
       'half_seconds_remaining',
@@ -439,16 +439,21 @@ features_wide
   res
 }
 
-do_causal_stuff <- function(col_trt) {
-  
-  col_trt <- 'is_target_picked'
+.binary_factor_to_lgl <- function(x) {
+  x %>% as.integer() %>% {. - 1L} %>% as.logical()
+}
+
+do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
+  # col_trt <- 'is_target_picked'
+  .validate_col_trt(col_trt)
+
   fmla_chr <-
-    sprintf('%s ~ x_o + x_d + dist_o + dist_d + half_seconds_remaining + yardline_100 + away_timeouts_remaining + home_timeouts_remaining + roof + is_home + down_fct*yards_to_go', col_trt)
+    sprintf('%s ~ x + y + x_o + dist_o + x_d + dist_d + half_seconds_remaining + yardline_100 + away_timeouts_remaining + home_timeouts_remaining + roof + is_home + down_fct + yards_to_go', col_trt)
+  fmla_chr <- sprintf('%s ~ x', 'y')
   fmla <- fmla_chr %>% as.formula()
   
   fit <-
-    features_wide %>% 
-    glm(fmla, data = ., family = stats::binomial)
+    glm(y ~ x, data = features_wide, family = 'binomial')
   fit
   
   res_match <-
@@ -461,6 +466,7 @@ do_causal_stuff <- function(col_trt) {
     )
   # # Lots of unnecesary stuff.
   # res_match
+  # res_balance <- Matching::MatchBalance(fmla, data = features_wide %>% mutate(across(col_trt, .binary_factor_to_lgl)), match.out = res_match, nboots = 5)
   
   features_match <- 
     bind_rows(
@@ -469,44 +475,83 @@ do_causal_stuff <- function(col_trt) {
     )
   features_match
   
-  sd_diffs <-
+  if(col_trt == 'is_target_picked') {
+    title_suffix_1 <- 'targeted pick play'
+    title_suffix_2 <- 'targeted picks'
+    axis_label <- 'target picked'
+  } else if (col_trt == 'has_same_defender') {
+    title_suffix_1 <- 'targeted defender coverage'
+    title_suffix_2 <- 'coverage'
+    axis_label <- 'same defender'
+  }
+  file_suffix <- col_trt
+  
+  .f_predict <- function(data) {
+    fit %>% broom::augment(newdata = data, type.predict = 'response')
+  }
+  
+  preds <-
     bind_rows(
-      features_wide %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp = 'Un-adjusted'),
-      features_match %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp = 'Adjusted')
+      features_wide %>% .f_predict() %>% mutate(grp_adj = 'Un-adjusted'),
+      features_match %>% .f_predict() %>% mutate(grp_adj = 'Adjusted')
     ) %>% 
     mutate(
-      across(grp, ~.x %>% fct_inorder())
+      across(c(grp), str_to_title)
+    )
+  preds
+  # preds %>% count(grp, grp_adj)
+
+  viz_prop_probs <-
+    preds %>% 
+    ggplot() + 
+    aes(x = .fitted, fill = grp) + 
+    geom_histogram(data = . %>% filter(grp_adj == 'Un-adjusted'), fill = 'grey80', binwidth = 0.02, aes(y = -..count..)) +
+    geom_histogram(data = . %>% filter(grp == 'Control', grp_adj == 'Adjusted'), binwidth = 0.02, aes(y = -..count..)) +
+    geom_histogram(data = . %>% filter(grp == 'Treatment', grp_adj == 'Adjusted'), binwidth = 0.02) +
+    scale_fill_manual(values = c(`Control` = 'dodgerblue', `Treatment` = 'darkorange')) +
+    coord_cartesian(ylim = c(-100, 100), clip = 'off') +
+    guides(fill = guide_legend('')) +
+    theme(
+      legend.position = 'top'
+    ) +
+    labs(
+      title = sprintf('Probabiliites fit for %s model', title_suffix_1),
+      caption = 'Gray illustrates un-adjusted samples, while colors illustrate adjusted samples.',
+      y = '# of plays',
+      x = sprintf('P(%s)', axis_label)
+    )
+  viz_prop_probs
+  do_save_plot(viz_prop_preds, file = sprintf('viz_prop_probs_%s', file_suffix))
+  
+  sd_diffs <-
+    bind_rows(
+      features_wide %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp_adj = 'Un-adjusted'),
+      features_match %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp_adj = 'Adjusted')
+    ) %>% 
+    mutate(
+      across(grp_adj, ~.x %>% fct_inorder())
     )
   sd_diffs
   
   sd_diffs_rnk <-
     sd_diffs %>% 
-    filter(grp == 'Un-adjusted') %>% 
+    filter(grp_adj == 'Un-adjusted') %>% 
     # arrange(desc(abs_diff)) %>% 
     mutate(rnk = row_number(desc(abs(sd_diff)))) %>% 
     select(col, rnk) %>% 
     arrange(rnk)
   sd_diffs_rnk
-  
-  if(col_trt == 'is_target_picked') {
-    title_suffix_1 <- 'targeted pick play'
-    title_suffix_2 <- 'targeted picks'
-  } else if (col_trt == 'has_same_defender') {
-    title_suffix_1 <- 'targeted defender coverage'
-    title_suffix_2 <- 'coverage'
-  }
-  file_suffix <- col_trt
-  
+
   viz_love <-
     sd_diffs %>% 
     left_join(sd_diffs_rnk) %>% 
     mutate(across(col, ~fct_reorder(.x, -rnk))) %>% 
-    arrange(grp, rnk) %>% 
+    arrange(grp_adj, rnk) %>% 
     ggplot() +
-    aes(y = col, x = abs(sd_diff), color = grp) +
+    aes(y = col, x = abs(sd_diff), color = grp_adj) +
     geom_vline(aes(xintercept = 0.1), size = 1, linetype = 2) +
     geom_point(size = 2) +
-    geom_path(aes(group = grp), size = 0.5) +
+    geom_path(aes(group = grp_adj), size = 0.5) +
     scale_color_manual(values = c(`Un-adjusted` = 'dodgerblue', `Adjusted` = 'darkorange')) +
     guides(
       color = guide_legend('', override.aes = list(size = 3))
@@ -579,10 +624,6 @@ features_match_is_target_picked <- 'is_target_picked' %>% do_causal_stuff()
 features_match_has_same_defender <- 'has_same_defender' %>% do_causal_stuff()
 
 # t test stuff ----
-.binary_factor_to_lgl <- function(x) {
-  x %>% as.integer() %>% {. - 1L} %>% as.logical()
-}
-
 .simplify_pick_features <- function(data) {
   data %>% 
     mutate(
