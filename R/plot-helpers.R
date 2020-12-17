@@ -1,5 +1,6 @@
 
 #' @seealso \url(https://stackoverflow.com/a/17313561/120898)
+#' @export
 pts <- function(x) {
   as.numeric(grid::convertUnit(grid::unit(x, "pt"), "mm"))
 }

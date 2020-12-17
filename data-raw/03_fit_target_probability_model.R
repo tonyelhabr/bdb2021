@@ -123,7 +123,7 @@ if(!final) {
   # probs_folds2 <- path2 %>% arrow::read_parquet()%>% arrange(game_id, play_id, frame_id)
   # probs_folds1
   # probs_folds2
-  # probs_folds %>% filter(.set == 'tst') %>% arrange(game_id, play_id, frame_id)
+  probs_folds %>% filter(.set == 'tst') %>% arrange(game_id, play_id, frame_id)
   
   stopifnot(!file.exists(path_export))
   arrow::write_parquet(probs_folds, path_export)

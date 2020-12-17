@@ -23,8 +23,10 @@ plot_play(
   at = "end_routes",
   save = TRUE,
   dir = get_bdb_dir_figs(),
-  filename = sprintf("\%s-\%s.png", game_id, play_id),
+  ext = "png",
+  filename = sprintf("\%s-\%s.\%s", game_id, play_id, ext),
   path = file.path(dir, filename),
+  subtitle = NULL,
   width = 10,
   height = 10,
   ...

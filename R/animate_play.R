@@ -337,6 +337,14 @@ animate_play <-
       }
     }
     
+    nontarget_tracking_between <-
+      nontarget_tracking %>% 
+      dplyr::anti_join(
+        nontarget_tracking_clipped %>% 
+          dplyr::select(.data$game_id, .data$play_id, .data$nfl_id, .data$frame_id),
+        by = c('nfl_id', 'frame_id', 'game_id', 'play_id')
+      )
+
     p <-
       # tracking %>%
       ggplot2::ggplot() +
@@ -373,7 +381,15 @@ animate_play <-
         data = nontarget_tracking_clipped %>% dplyr::select(-.data$frame_id),
         ggplot2::aes(color = side, group = nfl_id),
         size = 1,
-        alpha = 0.2,
+        alpha = 0.3,
+        show.legend = FALSE
+      ) +
+      ggplot2::geom_path(
+        data = nontarget_tracking_between %>% dplyr::select(-.data$frame_id),
+        ggplot2::aes(color = side, group = nfl_id),
+        size = 1,
+        alpha = 0.3,
+        linetype = 2,
         show.legend = FALSE
       ) +
       ggplot2::geom_text(
@@ -386,13 +402,29 @@ animate_play <-
     
     if(has_target) {
       
+      target_tracking_between <-
+        target_tracking %>% 
+        dplyr::anti_join(
+          target_tracking_clipped %>% 
+            dplyr::select(.data$game_id, .data$play_id, .data$nfl_id, .data$frame_id),
+          by = c('nfl_id', 'frame_id', 'game_id', 'play_id')
+        )
+
       p <-
         p +
         ggplot2::geom_path(
           data = target_tracking_clipped %>% dplyr::select(-.data$frame_id),
           ggplot2::aes(color = side),
           size = 2,
-          alpha = 0.2,
+          alpha = 0.3,
+          show.legend = FALSE
+        ) +
+        ggplot2::geom_path(
+          data = target_tracking_between %>% dplyr::select(-.data$frame_id),
+          ggplot2::aes(color = side),
+          size = 2,
+          alpha = 0.3,
+          linetype = 2,
           show.legend = FALSE
         ) +
         ggplot2::geom_text(

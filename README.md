@@ -3,22 +3,21 @@
 
 # Introduction
 
-## Execuive Summary
+## Abstract
 
-Using [Frequentist
-analysis](https://en.wikipedia.org/wiki/Frequentist_inference), I find
-that “non-man” coverage\[1\] is significantly less successful, in terms
-of expected points added (EPA), against pick route combinations where
-one of the involved receivers is targeted, as compared to the same such
-coverage against plays where the targeted receiver is not involved in a
-pick combination. However, when using a causal approach, I find no
-evidence for targeted picks having a significant effect on play success.
-Likewise,
-
-Moreover, I find that there is no significant difference in playing man
-coverage against pick route combinations involving the eventual targeted
-receiver compared to man coverage in other plays. (This deduction is not
-necessarily implied by the prior conclusion.)
+When using a causal approach, I find no evidence for targeted pick route
+combinations having a significant effect on play success, as measured by
+expected points added (EPA). This contrasts with the result found from
+comparing the difference in EPA means with
+[t-tests](https://en.wikipedia.org/wiki/Student%27s_t-test), i.e. a
+[Frequentist
+approach](https://en.wikipedia.org/wiki/Frequentist_inference)).
+Likewise, I also find that whether the defense uses a man-to-man
+coverage on the targeted receiver or any other coverage\[1\] does not
+have a causal effect on the play’s success. Finally, despite the lack of
+causal effects of pick plays and individual coverage on the targeted
+receiver, I identify defenders who have relatively good success in
+defending targeted pick plays.
 
 ## Motivation
 
@@ -32,26 +31,32 @@ necessarily implied by the prior conclusion.)
 > Football, 2017](https://blogs.usafootball.com/blog/4177/rub-concepts-how-to-defend-them-and-how-offenses-can-counteract-it)
 
 The table below provides some evidence for the success of pick plays
-relative to all other passing plays. a student’s t-test, which account
-for relative sample size, indicates
+relative to all other passing plays. A student’s t-test indicates that
+there is a significant difference in EPA averages when subsetting pass
+result based on whether it was successful (completed) or not (incomplete
+or intercepted). \[2\] The averages seem to indicate that EPAs are
+larger in magnitude for pick plays. The t-test does account for sample
+counts, so attributing the differences to noise is probably not
+justified.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_epa_nonadjusted.png)
+![tab\_epa\_unadjusted\_nosubtitle](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_epa_unadjusted_nosubtitle.png)
 
-For context, the table below delineates frequency. (The relative
-difference in frequencies are accounted for by t-test.)
+For context, the table below delineates the frequencies of the pass
+outcomes by whether the target receiver was involved in a pick route
+combination.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_n_nonadjusted.png)
+![tab\_n\_unadjusted\_nosubtitle](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_n_nonadjusted_nosubtitle.png)
 
 To provide an illustration of the impact pick plays can have, below is
 the pick play that resulted in the highest expected points added (EPA)
 in the 2018 season.
 
-![highest-epa-pick-play](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_pick_play.png)
+![highest\_epa\_pick\_play](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_pick_play.png)
 
 Likewise, below is the pick play that resulted in the lowest EPA (good
 for the defense).
 
-![lowest-epa-pick-play](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/lowest_epa_pick_play.png)
+![lowest\_epa\_pick\_play](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/lowest_epa_pick_play.png)
 
 Just from these two extreme plays, one can get a sense for the high
 amount of leverage that these plays can have on game flow and,
@@ -70,9 +75,10 @@ opposing end zone.
 2.  Discuss and implement a methodology for detecting defensive schemes
     on pick plays.
 
-3.  Quantify the relative success of pick route combinations from the
-    offensive perspective, as well as the relative success of certain
-    defensive coverage against them.
+3.  Perform analyses of the causal effects of targeted picks plays and
+    individual coverage of targeted receivers.
+
+4.  Quantify individual defender success in covering pick routes.
 
 ## Actionable Outcomes
 
@@ -112,9 +118,9 @@ not know the team defensive coverages for all plays (and also how teams
 have coached defenders to adapt dynamically in response to certain
 offensive actions), so this analysis is limited in that sense.
 
-# 1\. Detecting Pick Plays
+# 1\. Identifying Pick Plays
 
-## Trial and Error
+## Methodology
 
 Perhaps the simplest data-driven way to identify pick combinations is to
 derive it from (1) initial offensive player alignment at the time of the
@@ -122,8 +128,8 @@ snap—number of receivers on one side of the ball, order of receivers
 relative to a specified sideline, distance between receivers—and (2) the
 routes run by the receivers. The former can be inferred from the `x`
 and`y` fields in the tracking data, and the latter is provided
-explicitly. Upon visual investigation, it was found that this method is
-much too sensitive to the author’s definition of pick route combinations
+explicitly. Upon visual investigation, I found that this method is much
+too sensitive to some strict definition of pick route combinations
 (e.g. SLANT + OUT for two receivers, SLANT + x + OUT for 3 receivers,
 etc.) and too naive to the fact that the same type of route (e.g. a
 SLANT) can be run in a myriad of styles. Below is an example.
@@ -132,30 +138,33 @@ A second way to identify pick plays is to again (1) start with offensive
 alignment and then (2) track the order of the receivers relative to the
 sideline as the play progresses. One might say that a pick is detected
 if the receivers change order relative to the sideline within some
-pre-defined number of frames after the ball is snapped. While this
-method was evaluated, it too often flagged route combinations that might
+pre-defined number of frames after the ball is snapped. While I did
+evaluate this method, it too often flagged route combinations that might
 better be described as a “mesh” or some kind of clear-out, where one
 receiver runs much more down-field than the other. Below is an example.
 
-Finally, the methodology that was settled upon was one in which receiver
-paths were traced out and “intersections” between routes were identified
-within 2 seconds (20 frames) of the snap. (While this is by no means a
-perfect method, it seems to be relatively robust to false positives,
-e.g. deeper mesh concepts.) Some additional criteria was applied:
+Finally, I settled upon a methodology in which I traced out receiver
+paths, identifying “intersections” between routes within 2 seconds (20
+frames) of the snap. (While this is by no means a perfect method, it
+seems to be relatively robust to false positives, e.g. deeper mesh
+concepts.) Some additional criteria was applied:
 
 1.  Receivers out of the backfield (i.e. mostly RBs) were disregarded.
     (Very few route intersections occurred for players coming out of the
     backfield anyways.)
-2.  Each receiver’s path was traced out one yard back from their
-    position at the snap. The intention of this is to capture
-    stacked/bunched pairs of routes.
+2.  Each receiver’s path was traced out 1 yard back from their position
+    at the snap. The intention of this is to capture stacked/bunched
+    pairs of routes.
 
-Why within 2 seconds of the snap? We evaluated various half-second
-values for `n`—specifically, 0.5 seconds, 1 second, 1.5 seconds, … 3
-seconds. The figure below illustrates the frequency of receiver
-intersections `n` seconds into the play.
+Why within 2 seconds of the snap? I began by counting how frequent
+intersections occurred up through `n` seconds after the
+snap—specifically, 0.5 seconds, 1 second, 1.5 seconds, …, 3 seconds.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_intersections_after_n_sec.png)
+![intersections\_after\_n\_sec](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_intersections_after_n_sec.png)
+
+This was certainly helpful to get some numbers in mind, but things
+ultimately came down to me visually inspecting plays at each threshhold
+and identifying 2 seconds as the maximum that I felt comfortable with.
 
 ## Play Examples
 
@@ -174,30 +183,29 @@ traditional crossing scheme.
 
 Likewise, the example below illustrates a route intersection—between the
 route of Jarvis Landry (86) and that of Rashard Higgins (84)—that occurs
-between 2 and 2.5 seconds after the snap, which is also too late to be
-considered a pick route combination. This is certainly much closer to
-being a true pick play—and a video analyst may agree—but the methodology
-does not classify it as so. On the other hand, the crossing of David
-Njoku’s (85) path with that of Jarvis Landry’s path occurs within 1
-second of the snap, so their pair of routes does count as a pick route
-combination.
+between 2 and 2.5 seconds after the snap. Subjectively, this seems
+certainly much closer to being a true pick play—and a video analyst may
+agree; nonetheless, the methodology does not classify it as so (since it
+occurs more than 2 seconds after the snap). On the other hand, the
+crossing of David Njoku’s (85) path with that of Jarvis Landry’s path
+occurs within 1 second of the snap, so their pair of routes does count
+as a pick route combination.
 
 ![pick-play-2.5-sec](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/is_pick_play=Y-sec=2.5-pass_complete=N-is_lo=Y-target_is_intersect=Y-high_epa=N-2018090901-3718.png)
 
-Below is an example of a pick play identified for a route combination in
-which the receiver paths did not actually intersect, yet the play is
-still classified as a pick play due to the 1 yard backwards extension.
-(The intention is to illustrate the usefulness of extending receiver
-paths one yard back for the purpose of capturing legitimate pick
-actions.) Note how Zach Ertz (86) crosses just under Nelson Agholor’s
-(13) starting position, ultimately receiving a pass thrown to him less
-than 1.5 seconds after the snap.
+Below is an example in which the receiver paths did not actually
+intersect, yet the play is still classified as a pick play due to the 1
+yard backwards extension. The intention is to illustrate the usefulness
+of extending receiver paths one yard back for the purpose of capturing
+legitimate pick actions. Note how Zach Ertz (86) crosses just under
+Nelson Agholor’s (13) starting position, ultimately receiving a pass
+thrown to him less than 1.5 seconds after the snap.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/y_buffer_pick_play.png)
+![y\_buffer\_pick\_play](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/y_buffer_pick_play.png)
 
-### Team and Player Trends
+## Team and Player Trends
 
-As a sanity check on the pick route identification methodology, we
+As a sanity check on the pick route identification methodology, I
 continue with some descriptive charts, illustrating larger trends.
 
 Below is a summary of which teams ran pick route combinations most
@@ -206,46 +214,35 @@ given what is empirically observed from Sean McVay’s offense. The
 Washington Football Team’s place as second on this list is perhaps not
 too surprising given Jay Gruden’s ties with McVay.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_pick_play_frac.png)
+![pick\_play\_frac](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_pick_play_frac.png)
 
-Given the above chart, perhaps it’s not surprising to find a Los
-Anageles Rams receiver (Robert Woods) at the top of the list of
-receivers involved in the most pick route combinations.
+Given the above chart, perhaps it’s not surprising to find a Los Angeles
+Rams receiver (Woods) at the top of the list of receivers involved in
+the most pick route combinations.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_picks_by_receiver.png)
+![picks\_by\_receiver](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_picks_by_receiver.png)
+
+Again, given the team breakdown, it’s no surprise to find 3 Rams players
+(Woods, Cupp, and Reynolds) and 2 Football Team’s players (Reed and
+Crowder) among the receivers with the highest pick route involvement
+relative to their total number of routes run.
+
+![frac\_by\_receiver](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_frac_by_receiver.png)
 
 Julio Jones happens to be the one targeted the most when involved in a
-pick route combination.
+pick route combination. Andecdotally, this makes sense. Jones is known
+as one of the top receivers in the game, having a pretty diverse route
+tree. 2018 was his personal second best season in terms of yards
+received and receptions.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_picks_by_receiver_target.png)
-
-A couple of tight ends top the list of receivers in terms of
-involvememnt as a fraction of their total number of routes run.
-
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_picks_by_receiver_frac.png)
-
-Finally, we look at the estimates and standard errors of terms included
-in a simple logistic regression model predicting whether a play includes
-a pick route combination or not as the response. (Only play-level
-descriptors are used as the features.) While a simple logistic
-regression is certainly not robust enought to capture potential
-non-linearities and interactions among features, it should give us tell
-us something about the game context in which pick plays are most likely
-to occur.
-
-![viz-pick-play-prob-coefs](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_pick_play_prob_coefs.png)
-
-This model (which may not be robust enough to interactions between
-features) shows that pick route combinations happen more frequently when
-there are more wide receivers (i.e. `n_wr4`, `n_wr>4`), that they are
-more likely to be run on third and fourth down (`down3` and `down4`),
-and that they are less likely towards the end of the game (`quarter3`
-and `quarter4`).
+![picks\_by\_receiver\_target](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_picks_by_receiver_target.png)
 
 # 2\. Identifying Defensive Coverage
 
-Enough about the offense\! The point of this whole thing is to quantify
-defensive backs/coverage, so let’s attempt to do that.
+## Methodology
+
+Enough with the offense\! The point of this whole thing is to quantify
+defensive backs/coverage after all, so let’s attempt to do that.
 
 Perhaps the simplest way for defensive backs to cover a pick route
 combination is to “stay with their man” in a pure man-to-man coverage.
@@ -254,34 +251,35 @@ combination is to “stay with their man” in a pure man-to-man coverage.
 
 Another common way is to play a hybrid-man coverage (perhaps also called
 matchup zone), where defensive backs play man-to-man on the receiver
-that releases in their area. ([Ngyuen describes this as a “banjo”
+that releases in their area. ([Nguyen describes this as a “banjo”
 scheme.](https://blogs.usafootball.com/blog/4177/rub-concepts-how-to-defend-them-and-how-offenses-can-counteract-it))
 
 ![banjo-scheme](https://assets.usafootball.com/cms/inline-images/Nguyenpic2.jpg)
 
 Like the hybrid approach, a zone approach would also not involve the
-defenders crossing paths along with the receivers. We might say that it
+defenders crossing paths along with the receivers. One might say that it
 would be difficult to distinguish from said hybrid coverage without
 labels.
 
-Thus, for the sake of this analysis, we’ll simplify things to just: “Did
+Thus, for the sake of this analysis, I’ll simplify things to just: “Did
 the defenders have the same receiver assignments at the time of the
-throw compared to at the time of the snap?” If “yes”, we’ll say that
-they played man-to-man coverage. (Maybe it wasn’t really man-to-man
-coverage, but it’s certainly distinct.) If not, then we’ll just refer to
-it as “not man-to-man” defense. (It could be the banjo type of coverage,
+throw compared to at the time of the snap?” If “yes”, I’ll say that they
+played man-to-man coverage. (Maybe it wasn’t really man-to-man coverage,
+but it’s certainly distinct.) If not, then I’ll just refer to it as “not
+man-to-man”, or just “non-man”. (It could be the banjo type of coverage,
 or some kind of more traditional zone coverage.)
 
-For identifying defender “assignments”, we us bipartite min-distance
-matching, employing the Hungarian method. We make assignments for all
-pick plays irregardless whether the defense was actually playing a
-man-to-man scheme. (We don’t have a complete set of team coverage
+For identifying defender “assignments”, I use [bipartite min-distance
+matching, employing the Hungarian
+method](https://en.wikipedia.org/wiki/Hungarian_algorithm). I make
+assignments for all plays and all receivers, although we’ll be focusing
+on the targeted receiver. (We don’t have a complete set of team coverage
 labels, and we assert that it is not necessary for the study at hand, in
-which we only care about the coverage of two route runners.) This
+which we only care about the coverage of the targeted receiver.) This
 assignment methodology overcomes the issue of having a single defender
-assigned to more than a single offensive player, which can result from a
+assigned to more than a single offensive player, which can happen with a
 simple closest defender approach. While a more complex methodology could
-be employed to identify coverage schemes, we argue that it the chosen
+be employed to identify coverage schemes, I’d argue that the chosen
 approach strikes a good balance between complexity and simplicity.
 
 ## Play Examples
@@ -298,25 +296,25 @@ for the bipartite matching, defender ? would have been assigned to both.
 Below is an example where the initial defenders covering a pick route
 combination do not change.
 
-![same-defender-high-epa](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_same_defender_high_epa.png)
+![epa\_w\_same\_defender\_pick\_play](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_w_same_defender_pick_play.gif)
 
 While the above is a “high EPA” play (where the outcome was very
 positive for the offense), below is a low EPA example.
 
-![same-defender-low-epa](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_same_defender_low_epa.png)
+![lowest\_epa\_w\_same\_defender\_pick\_play](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/lowest_epa_w_same_defender_pick_play.gif)
 
 Next is a high EPA example where the defenders assigned to the receivers
 in a pick route combination differ compared to the initial defenders.
 (In this case, the assignments swap.)
 
-![diff-defender-high-epa](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_diff_defender_high_eap.png)
+![highest\_epa\_w\_diff\_defender\_pick\_pla](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_w_diff_defender_pick_play.gif)
 
 Finally, below is a low EPA example where the defenders of the pick
 route receivers change.
 
-![diff-defender-low-epa](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_diff_defender_low_epa.png)
+![lowest\_epa\_w\_diff\_defender\_pick\_play](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/lowest_epa_w_diff_defender_pick_play.gif)
 
-# 3\. Quantifying the Benefit of Pick Plays
+# 3\. Causal Analysis
 
 As we go forward with quantifying the impact of pick route combinations,
 we need to be careful to consider some additional factors. Specifically,
@@ -363,33 +361,36 @@ we take. Thus, for the following analysis, we don’t differentiate
 between the high and low receiver in a pick route combination; we only
 care that a targeted receiver is involved in the combination.
 
-\(3\) is not problematic for our anlaysis simply because we focus on the
-targeted receiver.
+3)  is not problematic for our anlaysis simply because we focus on the
+    targeted receiver.
 
 ## Frequentist Analysis
 
 The tables that follow describe the frequency and success of pick plays
-across all teams in the 2018 season. In an attempt to enhance the
-robustness of our analysis, we use three measures of play “success”:
+across all teams in the 2018 season.\[3\] These are actually the same
+tables shown in the Motivation section, now with a subtitle emphasizing
+that no matching adjustment has been made.
 
-1.  Big Data Bowl EPA, `epa`
-2.  [`{nflfastR}`](https://github.com/mrcaseb/nflfastR) EPA,
-    `epa_nflfastr`
-3.  `{nflfastR}` win probability added (WPA), `wpa_nflfastr`
+![tab\_epa\_unadjusted](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_epa_unadjusted.png)
 
-We conduct [t-tests](https://en.wikipedia.org/wiki/Student%27s_t-test)
-to quantify whether there is a statistically significant difference
-between the means of two sets of values. Here, we’ll examine two groups,
-each having binary values.
+For context, the table below delineates the frequencies of the pass
+outcomes by whether the target receiver was involved in a pick route
+combination.
 
-1.  Whether the initial defender of the targeted receiver at the time of
+![tab\_n\_unadjusted](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_n_nonadjusted.png)
+
+I conduct t-tests to quantify whether there is a statistically
+significant difference between the means of paired groups of EPA.
+Specifically, I examine two binary conditions.
+
+1.  Whether the targeted receiver was in a pick route combination (`"Is
+    Pick Play? Y"`) or not (`"Is Pick Play? N"`).
+
+2.  Whether the initial defender of the targeted receiver at the time of
     the throw changes sometime after the snap (`"Has Same Initial
-    Defender? = N"`) compared to when the defender stays the same (`"Has
-    Same Initial Defender? = Y"`). Note that the former roughly equates
-    to non-man coverage and the latter roughly equates to man coverage.
-
-2.  Whether the targeted receiver was in a pick route combination (`"Is
-    Pick Play? = Y"`) or not (`"Is Pick Play? = N"`).
+    Defender? N"`) compared to when the defender stays the same (`"Has
+    Same Initial Defender? Y"`). Note that the former equates to
+    “non-man” coverage and the latter equates to man coverage.
 
 First, we observe that there is a statistically significant difference
 for both EPA measures (but not WPA) when the initial defender of the
@@ -476,9 +477,24 @@ variables in the EPA model used by the [`{nflfastR}` package]() and are
 very likely included in the EPA model used by the NFL to produce the
 values provided in the given data.
 
+## Conclusion
+
+While t-tests show statistically significant magnitudes of EPA—more
+negative when the pass is not successful and more positive when the pass
+is successful—adjusting for game situation and player tracking-derived
+features with a nearest neighbor matching method shows that these
+differences are not caused by the pick play action.
+
 1.  As discussed later, I refer to coverage as “non-man” if the assigned
     defender for a given receiver at the time of the throw is not the
     same as the assigned defender at the time of the snap. Put another
     way, it’s basically anything that is not distinctly man coverage,
     which certainly includes zone, but which may also include “matchup”
     man coverage.
+
+2.  A completed pass does not always have a positive EPA, nor does an
+    incomplete pass always have a negative EPA.
+
+3.  I also experimented with using EPA and win probability added (WPA)
+    from the `{nflfastR}` package, but I ultimately found them to be
+    redundant since they lead to the same results.

@@ -117,9 +117,9 @@ plays_w_pick_off_info <-
         yardline_100,
         is_home,
         roof,
-        # wp_nflfastr = wp,
-        # wpa_nflfastr = wpa,
-        # epa_nflfastr = epa,
+        wp_nflfastr = wp,
+        wpa_nflfastr = wpa,
+        epa_nflfastr = epa,
         away_timeouts_remaining,
         home_timeouts_remaining
       ),
@@ -208,8 +208,9 @@ features_lag_init <-
   mutate(across(has_same_defender, ~if_else(sec == 0, NA, .x))) %>%
   left_join(
     receiver_intersections_adj %>%
-      filter(sec <= .sec_cutoff) %>% 
-      select(week, game_id, play_id, nfl_id, nfl_id_intersect, sec_intersect = sec, is_lo) %>%
+      # filter(sec <= .sec_cutoff) %>% 
+      mutate(before_cutoff = if_else(sec <= .sec_cutoff, TRUE, FALSE)) %>% 
+      select(week, game_id, play_id, nfl_id, nfl_id_intersect, sec_intersect = sec, is_lo, before_cutoff) %>%
       mutate(has_intersect = TRUE)
   ) %>%
   mutate(
@@ -264,7 +265,7 @@ pick_features <-
   select(-had_intersect) %>% 
   # This is the last second measured on the play.
   select(-sec)
-pick_features
+pick_features %>% count(before_cutoff)
 
 plays_w_pick_def_info <-
   pick_features %>%
@@ -287,7 +288,7 @@ plays_w_pick_def_info <-
     across(c(display_name, position), ~coalesce(.x, '?'))
   ) %>%
   mutate(
-    is_target = if_else(nfl_id == nfl_id_target, 1L, 0L)
+    is_target = if_else(nfl_id == nfl_id_target, TRUE, FALSE)
   ) %>% 
   left_join(
     routes,
@@ -346,6 +347,7 @@ plays_w_pick_off_info_min <-
 plays_w_pick_def_info_min <-
   plays_w_pick_def_info %>% 
   filter(nfl_id == nfl_id_target) %>% 
+  # filter(before_cutoff) %>% 
   select(
     game_id, play_id, has_same_defender
   )
@@ -378,6 +380,7 @@ features_wide
 .get_valid_col_trt <- function() {
   c('is_target_picked', 'has_same_defender')
 }
+
 .validate_col_trt <- function(x = .get_valid_col_trt()) {
   match.arg(x)
 }
@@ -585,7 +588,7 @@ features_match_has_same_defender <- 'has_same_defender' %>% do_causal_stuff()
     mutate(
       across(c(is_target_picked, is_pass_successful, has_same_defender), .binary_factor_to_lgl),
       across(
-        is_target_picked, ~sprintf('Target Is Picked? %s', ifelse(.x, 'Y', 'N'))
+        is_target_picked, ~sprintf('Target Picked? %s', ifelse(.x, 'Y', 'N'))
       ),
       across(
         is_pass_successful, ~sprintf('Pass Successful? %s', ifelse(.x, 'Y', 'N'))
@@ -594,7 +597,7 @@ features_match_has_same_defender <- 'has_same_defender' %>% do_causal_stuff()
         has_same_defender, ~sprintf('Same Defender? %s', ifelse(.x, 'Y', 'N'))
       )
     ) %>%
-    select(is_target_picked, is_pass_successful, is_same_defender = has_same_defender, epa)
+    select(is_target_picked, is_pass_successful, has_same_defender, epa)
 }
 
 # gtsummary offensive t tests----
@@ -602,71 +605,232 @@ features_match_has_same_defender <- 'has_same_defender' %>% do_causal_stuff()
   data %>% 
     gtsummary::tbl_summary(
       statistic = list(
-        gtsummary::all_continuous() ~ '{median} ({p25}, {p75})'
+        gtsummary::all_continuous() ~ '{mean} ({p25}, {p75})'
       ),
       by = all_of(by)
     ) %>%
     gtsummary::add_p(
       test = gtsummary::all_continuous() ~ 't.test',
+      # test = gtsummary::all_continuous() ~ '.t_test_epa',
       pvalue_fun = function(x) gtsummary::style_pvalue(x, digits = 2)
     )
 }
 
-do_save_t_test_tabs <- function(data, suffix = NULL, sep = '_') {
-  
-  t1 <-
+.f_col_gtsummary <- function(data, col, ...) {
+  data %>% 
+    select(!!sym(col), ...) %>% 
+    .f_gtsummary(col)
+}
+
+do_save_t_test_tabs_is_target_picked <- function(data, subtitle = NULL, col = 'is_target_picked', suffix = NULL, sep = '_') {
+  # data <- features_wide_simple
+
+  datay <- 
     data %>%
-    select(is_pass_successful, epa) %>% 
-    mutate(
-      across(is_pass_successful, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
-    ) %>%
-    .f_gtsummary('is_pass_successful')
-  t1
+    filter(has_same_defender %>% str_detect('Y$')) 
   
-  t2 <-
+  datan <-
     data %>%
-    select(is_target_picked, epa) %>% 
-    mutate(
-      across(is_target_picked, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
-    ) %>%
-    .f_gtsummary('is_target_picked')
-  t2
+    filter(has_same_defender %>% str_detect('N$'))
   
-  res <- 
-    gtsummary::tbl_merge(
-      list(t1, t2), 
-      tab_spanner = c('Pass Successful?', 'Is Target Picked?')
-    ) %>% 
-    gtsummary::as_gt()
+  dataxy <-
+    data %>% 
+    filter(is_pass_successful %>% str_detect('Y$'))
+  
+  dataxn <-
+    data %>% 
+    filter(is_pass_successful %>% str_detect('N$'))
+  
+  datayy <-
+    datay %>% 
+    filter(is_pass_successful %>% str_detect('Y$'))
+  
+  datayn <-
+    datay %>% 
+    filter(is_pass_successful %>% str_detect('N$'))
+  
+  datany <-
+    datan %>% 
+    filter(is_pass_successful %>% str_detect('Y$'))
+  
+  datann <-
+    datan %>% 
+    filter(is_pass_successful %>% str_detect('N$'))
+  # # TODO: Make tables just listing frequencies.
+  # t <- 
+  #   data %>% 
+  #   # select(-epa) %>% 
+  #   mutate(n = 1L) %>% 
+  #   # .f_col_gtsummary(col, `N` = n)
+  #   select(!!sym(col), n) %>% 
+  #   gtsummary::tbl_summary(
+  #     label = list(is_target_picked ~ 'this'),
+  #     statistic = list(
+  #       gtsummary::all_integer() ~ '{N}'
+  #     ),
+  #     by = all_of(col)
+  #   ) %>%
+  #   # gt::tab_spanner(
+  #   #   label = c('a', 'b')
+  #   # ) %>% 
+  #   gtsummary::as_gt()
+  # t
+  t <- data %>% .f_col_gtsummary(col, `EPA` = epa)
+  ty <- datay %>% .f_col_gtsummary(col, `EPA | Same Defender? Y` = epa)
+  tn <- datan %>% .f_col_gtsummary(col, `EPA | Same Defender? N` = epa)
+  txy <- dataxy %>% .f_col_gtsummary(col, `EPA | Pass Successful? Y` = epa)
+  txn <- dataxn %>% .f_col_gtsummary(col, `EPA | Pass Successful? N` = epa)
+  
+  tyy <-
+    datayy %>% 
+  .f_col_gtsummary(col, `EPA | Pass Successful? Y & Same Defender? Y` = epa)
+  
+  tyn <-
+    datayn %>% 
+  .f_col_gtsummary(col, `EPA | Pass Successful? Y & Same Defender? N` = epa)
+  
+  tny <-
+    datany %>% 
+    .f_col_gtsummary(col, `EPA | Pass Successful? N & Same Defender? Y` = epa)
+  
+  tnn <-
+    datann %>% 
+    .f_col_gtsummary(col, `EPA | Pass Successful? N & Same Defender? N` = epa)
+  
+  res <-
+    gtsummary::tbl_stack(
+      list(
+        t, ty, txy, tyy, tyn, tn, txn, tny, tnn
+      )
+    )  %>% 
+    gtsummary::as_gt() %>% 
+    gt::tab_header(
+      subtitle = subtitle,
+      title = gt::md('EPA breakdown')
+    )
+  res
+
   if(is.null(suffix)) {
     suffix <- ''
   } else {
     suffix <- sprintf('%s%s', sep, suffix)
   }
-  gt::gtsave(res, filename = file.path(get_bdb_dir_figs(), sprintf('tab_t_test_epa%s.png', suffix)))
+  gt::gtsave(res, filename = file.path(get_bdb_dir_figs(), sprintf('tab_t_test_epa_is_target_picked%s.png', suffix)))
   res
+}
+
+do_save_t_test_tabs_has_same_defender <- function(data, col = 'has_same_defender', subtitle = NULL, suffix = NULL, sep = '_') {
+  # data <- features_wide_simple
+  
+  datay <- 
+    data %>%
+    filter(is_target_picked %>% str_detect('Y$')) 
+  
+  datan <-
+    data %>%
+    filter(is_target_picked %>% str_detect('N$'))
+  
+  dataxy <-
+    data %>% 
+    filter(is_pass_successful %>% str_detect('Y$'))
+  
+  dataxn <-
+    data %>% 
+    filter(is_pass_successful %>% str_detect('N$'))
+  
+  datayy <-
+    datay %>% 
+    filter(is_pass_successful %>% str_detect('Y$'))
+  
+  datayn <-
+    datay %>% 
+    filter(is_pass_successful %>% str_detect('N$'))
+  
+  datany <-
+    datan %>% 
+    filter(is_pass_successful %>% str_detect('Y$'))
+  
+  datann <-
+    datan %>% 
+    filter(is_pass_successful %>% str_detect('N$'))
+  
+  t <- data %>% .f_col_gtsummary(col, `EPA` = epa)
+  ty <- datay %>% .f_col_gtsummary(col, `EPA & Target Picked? Y` = epa)
+  tn <- datan %>% .f_col_gtsummary(col, `EPA & Target Picked? N` = epa)
+  txy <- dataxy %>% .f_col_gtsummary(col, `EPA | Pass Successful? Y` = epa)
+  txn <- dataxn %>% .f_col_gtsummary(col, `EPA | Pass Successful? N` = epa)
+  
+  tyy <-
+    datayy %>% 
+    .f_col_gtsummary(col, `EPA | Pass Successful? Y & Target Picked? Y` = epa)
+  
+  tyn <-
+    datayn %>% 
+    .f_col_gtsummary(col, `EPA | Pass Successful? Y & Target Picked? N` = epa)
+  
+  tny <-
+    datany %>% 
+    .f_col_gtsummary(col, `EPA | Pass Successful? N & Target Picked? Y` = epa)
+  
+  tnn <-
+    datann %>% 
+    .f_col_gtsummary(col, `EPA | Pass Successful? N & Target Picked? N` = epa)
+  
+  res <-
+    gtsummary::tbl_stack(
+      list(
+        t, ty, txy, tyy, tyn, tn, txn, tny, tnn
+      )
+    )  %>% 
+    gtsummary::as_gt() %>% 
+    gt::tab_header(
+      subtitle = subtitle,
+      title = gt::md('EPA breakdown')
+    )
+  res
+  
+  if(is.null(suffix)) {
+    suffix <- ''
+  } else {
+    suffix <- sprintf('%s%s', sep, suffix)
+  }
+  gt::gtsave(res, filename = file.path(get_bdb_dir_figs(), sprintf('tab_t_test_epa_has_same_defender%s.png', suffix)))
+  res
+}
+
+do_save_t_test_tabs <- function(features, subtitle, suffix) {
+  features_simple <- 
+    features %>% 
+    .simplify_pick_features()
+  features_simple
+  
+  features_simple %>% 
+    do_save_t_test_tabs_is_target_picked(subtitle = subtitle, suffix = suffix)
+  features_simple %>% 
+    do_save_t_test_tabs_has_same_defender(subtitle = subtitle, suffix = suffix)
+  features_simple
 }
 
 features_wide_simple <- 
   features_wide %>% 
-  .simplify_pick_features()
-
-features_wide_simple %>% 
-  do_save_t_test_tabs(suffix = 'unadjusted')
+  do_save_t_test_tabs(
+    subtitle = 'Before matching',
+    suffix = 'unadjusted'
+  )
 
 features_match_is_target_picked_simple <- 
   features_match_is_target_picked %>% 
-  .simplify_pick_features()
-
-features_match_is_target_picked_simple %>% 
-  do_save_t_test_tabs(suffix = 'adjusted_is_target_picked')
+  do_save_t_test_tabs(
+    subtitle = 'After matching for targeted pick plays',
+    suffix = 'adjusted_is_target_picked'
+  )
 
 features_match_has_same_defender_simple <- 
   features_match_has_same_defender %>% 
-  .simplify_pick_features()
-
-features_match_has_same_defender_simple %>% 
-  do_save_t_test_tabs(suffix = 'adjusted_has_same_defender')
+  do_save_t_test_tabs(
+    subtitle = 'After matching for targeted defender coverage', 
+    suffix = 'adjusted_has_same_defender'
+  )
 
 # non gtsummary offensive pick play t tests----
 .f_agg_epa <- function(data) {
@@ -715,8 +879,8 @@ features_match_has_same_defender_simple %>%
     ) %>% 
     gt::cols_label(
       # `t-test p-value` = gt::md('**t-test\np-value**'),
-      `Target Is Picked? N` = gt::md('**Target Is Picked? N**'),
-      `Target Is Picked? Y` = gt::md('**Target Is Picked? Y**')
+      `Target Picked? N` = gt::md('**Target Picked? N**'),
+      `Target Picked? Y` = gt::md('**Target Picked? Y**')
     )
 }
 
