@@ -27,6 +27,49 @@ do_save_plot <- function(...) {
 }
 
 # basic eda on receiver_intersections_adj ----
+.binary_factor_to_lgl <- function(x) {
+  x %>% as.integer() %>% {. - 1L} %>% as.logical()
+}
+
+viz_epa_swarm <-
+  plays %>% 
+  mutate(
+    # across(is_pass_successful, .binary_factor_to_lgl),
+    across(is_pass_successful, ~if_else(.x == '1', 'Y', 'N')),
+    across(
+      epa, ~case_when(
+        .x < -3 ~ -3,
+        .x > 3 ~ 3,
+        TRUE ~ .x
+      )
+    )
+  ) %>% 
+  ggplot() +
+  aes(x = epa, y = is_pass_successful, color = is_pass_successful) +
+  ggbeeswarm::geom_quasirandom(
+    groupOnX = FALSE, 
+    varwidth = TRUE, 
+    size = 1, 
+    alpha = 0.2
+  ) +
+  scale_color_manual(values = c(`Y` = 'dodgerblue', `N` = 'darkorange')) +
+  guides(
+    color = guide_legend('Pass successful?', override.aes = list(alpha = 1, size = 3))
+  ) +
+  theme(
+    legend.position = 'top',
+    axis.text.y = element_blank(),
+    panel.grid.major.y = element_blank()
+  ) +
+  labs(
+    title = 'EPA by pass success',
+    caption = 'EPA truncated to -3 and 3.',
+    x = 'EPA',
+    y = NULL
+  )
+viz_epa_swarm
+do_save_plot(viz_epa_swarm)
+
 viz_intersections_after_n_sec <-
   receiver_intersections_adj %>% 
   semi_join(plays %>% select(game_id, play_id)) %>% 
@@ -365,13 +408,14 @@ min_dists_naive_od_target_filt <-
   semi_join(snap_frames)
 min_dists_naive_od_target_filt
 
-features_wide <-
+features <-
   min_dists_naive_od_target_filt %>% 
   select(-target_nfl_id) %>% 
   inner_join(plays_w_pick_off_info_min) %>% 
   inner_join(plays_w_pick_def_info_min)
-features_wide
-# arrow::write_parquet(features_wide, file.path('inst', 'features_wide.parquet'))
+features
+# arrow::write_parquet(features, file.path('inst', 'features.parquet'))
+arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'features.parquet'))
 
 .str_replace_f <- function(x, i) {
   x %>% str_replace('(^.*)_(mean|sd)$', sprintf('\\%d', i))
@@ -439,21 +483,17 @@ features_wide
   res
 }
 
-.binary_factor_to_lgl <- function(x) {
-  x %>% as.integer() %>% {. - 1L} %>% as.logical()
-}
-
 do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
   # col_trt <- 'is_target_picked'
   .validate_col_trt(col_trt)
 
   fmla_chr <-
-    sprintf('%s ~ x + y + x_o + dist_o + x_d + dist_d + half_seconds_remaining + yardline_100 + away_timeouts_remaining + home_timeouts_remaining + roof + is_home + down_fct + yards_to_go', col_trt)
-  fmla_chr <- sprintf('%s ~ x', 'y')
+    sprintf('%s ~ x*y + x_o*dist_o + x_d*dist_d + x_o*x_d + dist_o*dist_d + half_seconds_remaining + yardline_100 + away_timeouts_remaining + home_timeouts_remaining + roof + is_home + down_fct* yards_to_go', col_trt)
+  # fmla_chr <- sprintf('%s ~ x', 'y')
   fmla <- fmla_chr %>% as.formula()
   
   fit <-
-    glm(y ~ x, data = features_wide, family = 'binomial')
+    glm(fmla, data = features, family = 'binomial')
   fit
   
   res_match <-
@@ -461,17 +501,17 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
       caliper = 0.25,
       ties = FALSE,
       X = fit %>% fitted(),
-      Y = features_wide[['epa']],
-      Tr = features_wide[[col_trt]] %>% as.integer() %>% {. - 1L}
+      Y = features[['epa']],
+      Tr = features[[col_trt]] %>% as.integer() %>% {. - 1L}
     )
   # # Lots of unnecesary stuff.
   # res_match
-  # res_balance <- Matching::MatchBalance(fmla, data = features_wide %>% mutate(across(col_trt, .binary_factor_to_lgl)), match.out = res_match, nboots = 5)
+  # res_balance <- Matching::MatchBalance(fmla, data = features %>% mutate(across(col_trt, .binary_factor_to_lgl)), match.out = res_match, nboots = 5)
   
   features_match <- 
     bind_rows(
-      features_wide[res_match[['index.control']], ] %>% mutate(grp = 'control'), 
-      features_wide[res_match[['index.treated']], ] %>% mutate(grp = 'treatment')
+      features[res_match[['index.control']], ] %>% mutate(grp = 'control'), 
+      features[res_match[['index.treated']], ] %>% mutate(grp = 'treatment')
     )
   features_match
   
@@ -492,7 +532,7 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
   
   preds <-
     bind_rows(
-      features_wide %>% .f_predict() %>% mutate(grp_adj = 'Un-adjusted'),
+      features %>% .f_predict() %>% mutate(grp_adj = 'Un-adjusted'),
       features_match %>% .f_predict() %>% mutate(grp_adj = 'Adjusted')
     ) %>% 
     mutate(
@@ -521,11 +561,11 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
       x = sprintf('P(%s)', axis_label)
     )
   viz_prop_probs
-  do_save_plot(viz_prop_preds, file = sprintf('viz_prop_probs_%s', file_suffix))
+  do_save_plot(viz_prop_probs, file = sprintf('viz_prop_probs_%s', file_suffix))
   
   sd_diffs <-
     bind_rows(
-      features_wide %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp_adj = 'Un-adjusted'),
+      features %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp_adj = 'Un-adjusted'),
       features_match %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp_adj = 'Adjusted')
     ) %>% 
     mutate(
@@ -642,14 +682,32 @@ features_match_has_same_defender <- 'has_same_defender' %>% do_causal_stuff()
 }
 
 # gtsummary offensive t tests----
-.f_gtsummary <- function(data, by) {
-  data %>% 
+
+.get_valid_col_value <- function() {
+  c('epa', 'n')
+}
+
+.validate_col_value <- function(x = .get_valid_col_value(), ...) {
+  match.arg(x, ...)
+}
+
+.f_gtsummary <- function(data, by, col_value) {
+  .validate_col_value(col_value)
+  
+  res <-
+    data %>% 
     gtsummary::tbl_summary(
       statistic = list(
+        gtsummary::all_integer() ~ '{N}',
         gtsummary::all_continuous() ~ '{mean} ({p25}, {p75})'
       ),
       by = all_of(by)
-    ) %>%
+    )
+  
+  if(col_value == 'n') {
+    return(res)
+  }
+  res %>% 
     gtsummary::add_p(
       test = gtsummary::all_continuous() ~ 't.test',
       # test = gtsummary::all_continuous() ~ '.t_test_epa',
@@ -657,92 +715,20 @@ features_match_has_same_defender <- 'has_same_defender' %>% do_causal_stuff()
     )
 }
 
-.f_col_gtsummary <- function(data, col, ...) {
+.f_col_gtsummary <- function(data, col, ..., col_value) {
+  .validate_col_value(col_value)
   data %>% 
     select(!!sym(col), ...) %>% 
-    .f_gtsummary(col)
+    .f_gtsummary(col, col_value = col_value)
 }
 
-do_save_t_test_tabs_is_target_picked <- function(data, subtitle = NULL, col = 'is_target_picked', suffix = NULL, sep = '_') {
-  # data <- features_wide_simple
-
-  datay <- 
-    data %>%
-    filter(has_same_defender %>% str_detect('Y$')) 
-  
-  datan <-
-    data %>%
-    filter(has_same_defender %>% str_detect('N$'))
-  
-  dataxy <-
-    data %>% 
-    filter(is_pass_successful %>% str_detect('Y$'))
-  
-  dataxn <-
-    data %>% 
-    filter(is_pass_successful %>% str_detect('N$'))
-  
-  datayy <-
-    datay %>% 
-    filter(is_pass_successful %>% str_detect('Y$'))
-  
-  datayn <-
-    datay %>% 
-    filter(is_pass_successful %>% str_detect('N$'))
-  
-  datany <-
-    datan %>% 
-    filter(is_pass_successful %>% str_detect('Y$'))
-  
-  datann <-
-    datan %>% 
-    filter(is_pass_successful %>% str_detect('N$'))
-  # # TODO: Make tables just listing frequencies.
-  # t <- 
-  #   data %>% 
-  #   # select(-epa) %>% 
-  #   mutate(n = 1L) %>% 
-  #   # .f_col_gtsummary(col, `N` = n)
-  #   select(!!sym(col), n) %>% 
-  #   gtsummary::tbl_summary(
-  #     label = list(is_target_picked ~ 'this'),
-  #     statistic = list(
-  #       gtsummary::all_integer() ~ '{N}'
-  #     ),
-  #     by = all_of(col)
-  #   ) %>%
-  #   # gt::tab_spanner(
-  #   #   label = c('a', 'b')
-  #   # ) %>% 
-  #   gtsummary::as_gt()
-  # t
-  t <- data %>% .f_col_gtsummary(col, `EPA` = epa)
-  ty <- datay %>% .f_col_gtsummary(col, `EPA | Same Defender? Y` = epa)
-  tn <- datan %>% .f_col_gtsummary(col, `EPA | Same Defender? N` = epa)
-  txy <- dataxy %>% .f_col_gtsummary(col, `EPA | Pass Successful? Y` = epa)
-  txn <- dataxn %>% .f_col_gtsummary(col, `EPA | Pass Successful? N` = epa)
-  
-  tyy <-
-    datayy %>% 
-  .f_col_gtsummary(col, `EPA | Pass Successful? Y & Same Defender? Y` = epa)
-  
-  tyn <-
-    datayn %>% 
-  .f_col_gtsummary(col, `EPA | Pass Successful? Y & Same Defender? N` = epa)
-  
-  tny <-
-    datany %>% 
-    .f_col_gtsummary(col, `EPA | Pass Successful? N & Same Defender? Y` = epa)
-  
-  tnn <-
-    datann %>% 
-    .f_col_gtsummary(col, `EPA | Pass Successful? N & Same Defender? N` = epa)
-  
+.postprocess_t_test_tabs <- function(..., col_value, col, subtitle = NULL, suffix = NULL, sep = '_') {
+  .validate_col_trt(col)
+  .validate_col_value(col_value)
+  # browser()
   res <-
     gtsummary::tbl_stack(
-      list(
-        t, ty, txy, tyy, tyn, tn, txn, tny, tnn
-      )
+      list(...)
     )  %>% 
     gtsummary::as_gt() %>% 
     gt::tab_header(
@@ -750,26 +736,45 @@ do_save_t_test_tabs_is_target_picked <- function(data, subtitle = NULL, col = 'i
       title = gt::md('EPA breakdown')
     )
   res
-
+  
   if(is.null(suffix)) {
     suffix <- ''
   } else {
     suffix <- sprintf('%s%s', sep, suffix)
   }
-  gt::gtsave(res, filename = file.path(get_bdb_dir_figs(), sprintf('tab_t_test_epa_is_target_picked%s.png', suffix)))
+
+  gt::gtsave(res, filename = file.path(get_bdb_dir_figs(), sprintf('tab_t_test_%s_%s%s.png', col_value, col, suffix)))
   res
 }
 
-do_save_t_test_tabs_has_same_defender <- function(data, col = 'has_same_defender', subtitle = NULL, suffix = NULL, sep = '_') {
-  # data <- features_wide_simple
+.save_t_test_tabs <- function(data, col = 'is_target_picked', col_value = c('epa', 'n'), subtitle, suffix, ...) {
   
+  .validate_col_trt(col)
+  .validate_col_value(col_value)
+  
+  if(col == 'is_target_picked') {
+    col_other <- 'has_same_defender'
+    col_other_pretty <- 'Same Defender'
+  } else {
+    col_other <- 'is_target_picked'
+    col_other_pretty <- 'Target Picked'
+  }
+  col_other_sym <- col_other %>% sym()
+  col_value_pretty <- col_value %>% toupper()
+
+  if(col_value == 'epa') {
+    data['.value'] <- data$epa
+  } else {
+    data$.value <- 1L
+  }
+
   datay <- 
     data %>%
-    filter(is_target_picked %>% str_detect('Y$')) 
+    filter(!!col_other_sym %>% str_detect('Y$')) 
   
   datan <-
     data %>%
-    filter(is_target_picked %>% str_detect('N$'))
+    filter(!!col_other_sym %>% str_detect('N$'))
   
   dataxy <-
     data %>% 
@@ -795,48 +800,29 @@ do_save_t_test_tabs_has_same_defender <- function(data, col = 'has_same_defender
     datan %>% 
     filter(is_pass_successful %>% str_detect('N$'))
   
-  t <- data %>% .f_col_gtsummary(col, `EPA` = epa)
-  ty <- datay %>% .f_col_gtsummary(col, `EPA & Target Picked? Y` = epa)
-  tn <- datan %>% .f_col_gtsummary(col, `EPA & Target Picked? N` = epa)
-  txy <- dataxy %>% .f_col_gtsummary(col, `EPA | Pass Successful? Y` = epa)
-  txn <- dataxn %>% .f_col_gtsummary(col, `EPA | Pass Successful? N` = epa)
+  t <- data %>% .f_col_gtsummary(col, !!sym(sprintf('%s', col_value_pretty)) := .value, col_value = col_value)
+  ty <- datay %>% .f_col_gtsummary(col, !!sym(sprintf('%s | %s? Y', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
+  tn <- datan %>% .f_col_gtsummary(col, !!sym(sprintf('%s | %s? N', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
+  txy <- dataxy %>% .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? Y', col_value_pretty)) := .value, col_value = col_value)
+  txn <- dataxn %>% .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? N', col_value_pretty)) := .value, col_value = col_value)
   
   tyy <-
     datayy %>% 
-    .f_col_gtsummary(col, `EPA | Pass Successful? Y & Target Picked? Y` = epa)
+    .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? Y & %s? Y', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
   
   tyn <-
     datayn %>% 
-    .f_col_gtsummary(col, `EPA | Pass Successful? Y & Target Picked? N` = epa)
+    .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? Y & %s? N', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
   
   tny <-
     datany %>% 
-    .f_col_gtsummary(col, `EPA | Pass Successful? N & Target Picked? Y` = epa)
+    .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? N & %s? Y', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
   
   tnn <-
     datann %>% 
-    .f_col_gtsummary(col, `EPA | Pass Successful? N & Target Picked? N` = epa)
+    .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? N & %s? N', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
   
-  res <-
-    gtsummary::tbl_stack(
-      list(
-        t, ty, txy, tyy, tyn, tn, txn, tny, tnn
-      )
-    )  %>% 
-    gtsummary::as_gt() %>% 
-    gt::tab_header(
-      subtitle = subtitle,
-      title = gt::md('EPA breakdown')
-    )
-  res
-  
-  if(is.null(suffix)) {
-    suffix <- ''
-  } else {
-    suffix <- sprintf('%s%s', sep, suffix)
-  }
-  gt::gtsave(res, filename = file.path(get_bdb_dir_figs(), sprintf('tab_t_test_epa_has_same_defender%s.png', suffix)))
-  res
+  .postprocess_t_test_tabs(t, ty, txy, tyy, tyn, tn, txn, tny, tnn, ..., col_value = col_value, col = col, subtitle = subtitle, suffix = suffix)
 }
 
 do_save_t_test_tabs <- function(features, subtitle, suffix) {
@@ -845,15 +831,31 @@ do_save_t_test_tabs <- function(features, subtitle, suffix) {
     .simplify_pick_features()
   features_simple
   
-  features_simple %>% 
-    do_save_t_test_tabs_is_target_picked(subtitle = subtitle, suffix = suffix)
-  features_simple %>% 
-    do_save_t_test_tabs_has_same_defender(subtitle = subtitle, suffix = suffix)
+  cols_trt <- .get_valid_col_trt()
+  cols_value <- .get_valid_col_value()
+  
+  crossing(
+    col = cols_trt,
+    col_value = cols_value
+  ) %>% 
+    mutate(
+      res = 
+        map2(
+          col, col_value, 
+          ~.save_t_test_tabs(
+            features_simple, 
+            col = ..1, 
+            col_value = ..2, 
+            subtitle = subtitle, 
+            suffix = suffix
+          )
+        )
+    )
   features_simple
 }
 
-features_wide_simple <- 
-  features_wide %>% 
+features_simple <- 
+  features %>% 
   do_save_t_test_tabs(
     subtitle = 'Before matching',
     suffix = 'unadjusted'
@@ -962,10 +964,10 @@ do_save_epa_tabs <- function(data, subtitle = NULL, suffix = NULL, sep = '_') {
   invisible()
 }
 
-features_wide_simple %>%
+features_simple %>%
   do_save_epa_tabs(suffix = 'unadjusted_nosubtitle')
 
-features_wide_simple %>% 
+features_simple %>% 
   do_save_epa_tabs(subtitle = 'Before matching', suffix = 'unadjusted')
 
 features_match_is_target_picked_simple %>% 
