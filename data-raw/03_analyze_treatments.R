@@ -17,7 +17,7 @@ plays <-
   mutate(is_pass_successful = if_else(pass_result == 'C', 1, 0) %>% factor())
 pbp <- import_nflfastr_pbp()
 .sec_cutoff <- 2
-features <- import_new_features()
+def_features <- import_new_features()
 min_dists_naive_od_target <- import_min_dists_naive_od_target()
 
 do_save_plot <- function(...) {
@@ -26,11 +26,11 @@ do_save_plot <- function(...) {
   }
 }
 
-# basic eda on receiver_intersections_adj ----
+# basic eda ----
 .binary_factor_to_lgl <- function(x) {
   x %>% as.integer() %>% {. - 1L} %>% as.logical()
 }
-
+if(FALSE) {
 viz_epa_swarm <-
   plays %>% 
   mutate(
@@ -94,7 +94,7 @@ viz_intersections_after_n_sec <-
 viz_intersections_after_n_sec
 do_save_plot(viz_intersections_after_n_sec)
 
-# pick_play_meta_init and plays_w_pick_off_info ----
+# offensive features for models ----
 pick_play_meta_init <-
   receiver_intersections_adj %>%
   filter(sec <= .sec_cutoff) %>%
@@ -114,7 +114,7 @@ pick_play_meta_init <-
   select(-week)
 pick_play_meta_init
 
-.f <- function(id, data) {
+.f_nrow <- function(id, data) {
   if(is.null(data)) {
     return(0L)
   }
@@ -132,7 +132,7 @@ plays_w_pick_off_info <-
     by = c('game_id', 'play_id')
   ) %>%
   # relocate(pick_data) %>% 
-  mutate(is_target_picked = map2_int(target_nfl_id, pick_data, ~.f(..1, ..2)) %>% factor()) %>% 
+  mutate(is_target_picked = map2_int(target_nfl_id, pick_data, ~.f_nrow(..1, ..2)) %>% factor()) %>% 
   relocate(is_target_picked) %>% 
   left_join(
     personnel_and_rushers %>%
@@ -149,22 +149,33 @@ plays_w_pick_off_info <-
   left_join(
     pbp %>%
       mutate(
+        model_roof = if_else(
+          is.na(roof) | roof == 'open' | roof == 'closed', 'retractable',
+          as.character(roof)
+        ),
+        model_roof = as.factor(model_roof),
+        retractable = if_else(model_roof == 'retractable', 1, 0),
+        dome = if_else(model_roof ==  'dome', 1, 0),
+        outdoors = if_else(model_roof == 'outdoors', 1, 0),
         across(roof, factor),
         is_home = if_else(home_team == posteam, 1, 0) %>% factor()
       ) %>% 
       select(
         game_id,
         play_id,
-        # game_half,
-        half_seconds_remaining,
+        half_seconds = half_seconds_remaining,
         yardline_100,
         is_home,
+        retractable,
+        dome,
+        outdoors,
         roof,
+        off_timeouts = posteam_timeouts_remaining,
+        def_timeouts = defteam_timeouts_remaining,
+        
         wp_nflfastr = wp,
         wpa_nflfastr = wpa,
-        epa_nflfastr = epa,
-        away_timeouts_remaining,
-        home_timeouts_remaining
+        epa_nflfastr = epa
       ),
     by = c('game_id', 'play_id')
   ) %>%
@@ -205,11 +216,11 @@ viz_pick_play_frac <-
 viz_pick_play_frac
 do_save_plot(viz_pick_play_frac)
 
-# defense intersections, ending with pick_features df ----
+# defensive features for models ----
 # Only want the ball snap and end rush frames, not the other event frames.
 events_end_rush <- .get_events_end_rush()
 features_min_init <-
-  features %>%
+  def_features %>%
   filter(event %in% c('0.0 sec', events_end_rush)) %>%
   select(week, game_id, play_id, event, frame_id, sec, nfl_id, nfl_id_d_robust) %>%
   # If there are multiple of these `events_end_rush` on the same play, then just pick the first
@@ -284,7 +295,7 @@ features_lag <-
   ) %>%
   group_by(game_id, play_id, nfl_id) %>%
   arrange(frame_id, .by_group = TRUE) %>%
-  fill(had_intersect) %>%
+  fill(had_intersect, before_cutoff) %>%
   ungroup() %>%
   inner_join(
     plays %>%
@@ -298,7 +309,7 @@ features_lag <-
   mutate(
     across(has_same_defender, ~.x %>% as.integer() %>% factor())
   )
-features_lag
+features_lag %>% count(before_cutoff)
 
 # Taking the 1 non-snap frame of each play
 pick_features <-
@@ -352,13 +363,15 @@ plays_w_pick_def_info <-
       rename_with(~sprintf('%s_d_robust_init', .x), c(nfl_id, display_name, jersey_number, position)),
     by = c('game_id', 'play_id', 'nfl_id_d_robust_init')
   )
-plays_w_pick_def_info
+plays_w_pick_def_info # %>% filter(!before_cutoff)
 usethis::use_data(plays_w_pick_def_info, overwrite = TRUE)
+}
 
-# causal analysis ----
-# data('plays_w_pick_off_info', package = 'bdb2021')
-# data('plays_w_pick_def_info', package = 'bdb2021')
+# causal analysis prep----
+data('plays_w_pick_off_info', package = 'bdb2021')
+data('plays_w_pick_def_info', package = 'bdb2021')
 # plays_w_pick_off_info %>% count(is_pass_successful, is_epa_neg = epa < 0)
+
 plays_w_pick_off_info_min <-
   plays_w_pick_off_info %>%
   select(
@@ -373,18 +386,20 @@ plays_w_pick_off_info_min <-
     
     # stuff we already have that's redudndant with nflfastR covariates
     
-    down_fct,
+    down = down_fct,
     yards_to_go,
     
     # nflfastR stuff
     
-    # game_half,
-    half_seconds_remaining,
+    half_seconds,
     yardline_100,
     is_home,
+    # retractable,
+    # dome,
+    # outdoors,
     roof,
-    away_timeouts_remaining,
-    home_timeouts_remaining
+    off_timeouts,
+    def_timeouts
   )
 
 plays_w_pick_def_info_min <-
@@ -415,7 +430,7 @@ features <-
   inner_join(plays_w_pick_def_info_min)
 features
 # arrow::write_parquet(features, file.path('inst', 'features.parquet'))
-arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'features.parquet'))
+arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'plays_w_pick_info_features.parquet'))
 
 .str_replace_f <- function(x, i) {
   x %>% str_replace('(^.*)_(mean|sd)$', sprintf('\\%d', i))
@@ -425,24 +440,167 @@ arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'features.parquet')
   c('is_target_picked', 'has_same_defender')
 }
 
-.validate_col_trt <- function(x = .get_valid_col_trt()) {
-  match.arg(x)
+.validate_col_trt <- function(x = .get_valid_col_trt(), ...) {
+  match.arg(x, ...)
+}
+# dag stuff ----
+.tidy_dag <- function(ggdag) {
+  ggdag %>% 
+    ggdag::tidy_dagitty() %>%
+    ggdag::node_status()
 }
 
-.aggregate_to_sd_diffs <- function(data, col_trt) {
-  .validate_col_trt(col_trt)
-  cols_features <- 
+.node_labels <-
+  c(
+    'epa' = 'EPA',
+    'has_same_defender' = 'Same Defender?',
+    'is_target_picked' = 'Target Picked?',
+    'player_tracking' = 'Player Tracking',
+    'epa_predictors' = 'EPA Predictors'
+  )
+
+.generate_simple_tidy_dag <- function(exposure = .get_valid_col_trt()) {
+  exposure <- .validate_col_trt(exposure)
+  fmla <- sprintf('epa ~ %s', exposure) %>% as.formula()
+  ggdag::dagify(
+    fmla,
+    exposure = exposure,
+    outcome = 'epa',
+    labels = .node_labels
+  ) %>%
+    .tidy_dag()
+}
+
+.generate_tidy_dag <- function(..., exposure = .get_valid_col_trt()) {
+  exposure <- .validate_col_trt(exposure, several.ok = TRUE)
+  ggdag::dagify(
+    epa ~ epa_predictors,
+    epa ~ player_tracking,
+    ...,
+    exposure = exposure,
+    outcome = 'epa',
+    labels = .node_labels
+  ) %>%
+    .tidy_dag()
+}
+
+.save_dag <- function(data, col, suffix = NULL, ..., sep = '_') {
+  status_colors <-
     c(
-      'x', 'y', 'x_o', 'x_d', 'dist_o', 'dist_d', 
-      'down_fct',
-      'yards_to_go',
-      'half_seconds_remaining',
-      'yardline_100',
-      'is_home',
-      'roof',
-      'away_timeouts_remaining',
-      'home_timeouts_remaining'
+      exposure = 'cornflowerblue',
+      outcome = 'darkorange',
+      latent = 'grey50'
     )
+  na_color <- 'grey20'
+  viz <-
+    data %>%
+    ggplot() +
+    aes(x = x, y = y, xend = xend, yend = yend) +
+    ggdag::geom_dag_edges() +
+    ggdag::geom_dag_point(aes(color = status)) +
+    ggdag::geom_dag_label_repel(
+      aes(label = label, fill = status),
+      seed =  42,
+      color = 'white',
+      fontface = 'bold'
+    ) +
+    scale_color_manual(values = status_colors, na.value = na_color) +
+    scale_fill_manual(values = status_colors, na.value = na_color) +
+    guides(color = FALSE, fill = FALSE) +
+    # ggdag::theme_dag() +
+    theme(
+      # panel.grid = element_blank(),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.text = element_blank()
+    ) +
+    labs(
+      x = NULL, y = NULL,
+      ...
+    )
+  if(is.null(suffix)) {
+    suffix <- ''
+  } else {
+    suffix <- sprintf('%s%s', sep, suffix)
+  }
+  ggsave(viz, filename = file.path(get_bdb_dir_figs(), sprintf('dag_%s%s.png', col, suffix)), type = 'cairo', width = 6, height = 6)
+  viz
+}
+
+.save_simple_tidy_dag <- function(col, suffix = 't-test', col_pretty = NULL) {
+  dag <- .generate_simple_tidy_dag(exposure = col)
+  if(is.null(col_pretty)) {
+    col_pretty <-
+      case_when(
+        col == 'is_target_picked' ~ 'Target Picked?',
+        col == 'has_same_defender' ~ 'Same Defender?'
+      )
+    
+  }  .save_dag(dag, col = col, suffix = suffix, title = sprintf('DAG for t-test for %s', col_pretty))
+}
+
+cols_trt <- .get_valid_col_trt()
+walk(cols_trt, .save_simple_tidy_dag)
+
+dag_is_target_picked <- .generate_tidy_dag(exposure = 'is_target_picked', epa ~ is_target_picked)
+dag_has_same_defender <- .generate_tidy_dag(exposure = 'has_same_defender', epa ~ has_same_defender)
+
+dag_hard <- 
+  .generate_tidy_dag(
+    epa ~ is_target_picked, 
+    epa ~ has_same_defender ,
+    has_same_defender ~ is_target_picked
+  )
+
+dag_is_target_picked %>%
+  filter(name != 'player_tracking') %>%
+  .save_dag(
+    suffix = 'wo_player_tracking',
+    title = 'DAG for estimating causal effect of\ntargeted pick route',
+    subtitle = 'Without player tracking',
+    col = 'is_target_picked'
+  )
+
+dag_is_target_picked %>%
+  .save_dag(
+    title = 'DAG for estimating causal effect of\ntargeted pick route',
+    col = 'is_target_picked'
+  )
+
+dag_has_same_defender %>%
+  .save_dag(
+    title = 'DAG for estimating causal effect of\ntargeted defender coverage',
+    col = 'has_same_defender'
+  )
+
+dag_hard %>%
+  .save_dag(
+    title = 'DAG for estimating causal effects of\ntargeted pick route and defender coverage',
+    col = 'simultaneous'
+  )
+
+# causal stuff ----
+
+.extract_x_from_fmla <- function(fmla) {
+  # browser()
+  fmla[[3]] %>% 
+    as.character() %>% 
+    .[2:length(.)] %>% 
+    paste0(collapse = ' + ') %>% 
+    str_replace_all(c('\\s[+*]\\s' = ', ')) %>% 
+    # Remove leading +
+    str_remove_all('[+]') %>% 
+    str_trim() %>% 
+    str_split(pattern = '\\, ') %>% 
+    pluck(1) %>% 
+    unique()
+}
+
+.aggregate_to_sd_diffs <- function(data, col_trt, fmla) {
+  
+  .validate_col_trt(col_trt)
+  cols_features <- .extract_x_from_fmla(fmla)
+  
   col_trt_sym <- col_trt %>% sym()
   agg <-
     data %>% 
@@ -483,12 +641,12 @@ arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'features.parquet')
   res
 }
 
-do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
-  # col_trt <- 'is_target_picked'
+do_causal_analysis <- function(col_trt = .get_valid_col_trt()) {
+  # col_trt <- 'has_same_defender'
   .validate_col_trt(col_trt)
 
   fmla_chr <-
-    sprintf('%s ~ x*y + x_o*dist_o + x_d*dist_d + x_o*x_d + dist_o*dist_d + half_seconds_remaining + yardline_100 + away_timeouts_remaining + home_timeouts_remaining + roof + is_home + down_fct* yards_to_go', col_trt)
+    sprintf('%s ~ x*y + x_o*dist_o + x_d*dist_d + x_o*x_d + dist_o*dist_d + half_seconds + yardline_100 + off_timeouts + def_timeouts + roof + is_home + down*yards_to_go', col_trt)
   # fmla_chr <- sprintf('%s ~ x', 'y')
   fmla <- fmla_chr %>% as.formula()
   
@@ -498,7 +656,8 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
   
   res_match <-
     Matching::Match(
-      caliper = 0.25,
+      # caliper = 0.01,
+      exact = TRUE,
       ties = FALSE,
       X = fit %>% fitted(),
       Y = features[['epa']],
@@ -518,10 +677,12 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
   if(col_trt == 'is_target_picked') {
     title_suffix_1 <- 'targeted pick play'
     title_suffix_2 <- 'targeted picks'
+    ylim <- 100
     axis_label <- 'target picked'
   } else if (col_trt == 'has_same_defender') {
     title_suffix_1 <- 'targeted defender coverage'
     title_suffix_2 <- 'coverage'
+    ylim <- 150
     axis_label <- 'same defender'
   }
   file_suffix <- col_trt
@@ -539,7 +700,6 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
       across(c(grp), str_to_title)
     )
   preds
-  # preds %>% count(grp, grp_adj)
 
   viz_prop_probs <-
     preds %>% 
@@ -549,13 +709,14 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
     geom_histogram(data = . %>% filter(grp == 'Control', grp_adj == 'Adjusted'), binwidth = 0.02, aes(y = -..count..)) +
     geom_histogram(data = . %>% filter(grp == 'Treatment', grp_adj == 'Adjusted'), binwidth = 0.02) +
     scale_fill_manual(values = c(`Control` = 'dodgerblue', `Treatment` = 'darkorange')) +
-    coord_cartesian(ylim = c(-100, 100), clip = 'off') +
+    coord_cartesian(ylim = c(-ylim, ylim), clip = 'off') +
     guides(fill = guide_legend('')) +
     theme(
+      plot.title = ggtext::element_markdown(size = 16, face = 'bold'),
       legend.position = 'top'
     ) +
     labs(
-      title = sprintf('Probabiliites fit for %s model', title_suffix_1),
+      title = sprintf('Probabiliites fit for <i>%s</i> model', title_suffix_1),
       caption = 'Gray illustrates un-adjusted samples, while colors illustrate adjusted samples.',
       y = '# of plays',
       x = sprintf('P(%s)', axis_label)
@@ -565,8 +726,12 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
   
   sd_diffs <-
     bind_rows(
-      features %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp_adj = 'Un-adjusted'),
-      features_match %>% .aggregate_to_sd_diffs(col_trt = col_trt) %>% mutate(grp_adj = 'Adjusted')
+      features %>% 
+        .aggregate_to_sd_diffs(col_trt = col_trt, fmla = fmla) %>% 
+        mutate(grp_adj = 'Un-adjusted'),
+      features_match %>% 
+        .aggregate_to_sd_diffs(col_trt = col_trt, fmla = fmla) %>% 
+        mutate(grp_adj = 'Adjusted')
     ) %>% 
     mutate(
       across(grp_adj, ~.x %>% fct_inorder())
@@ -585,10 +750,12 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
   viz_love <-
     sd_diffs %>% 
     left_join(sd_diffs_rnk) %>% 
+    # .prep_viz_data() %>% 
     mutate(across(col, ~fct_reorder(.x, -rnk))) %>% 
+    rename(lab = col) %>% 
     arrange(grp_adj, rnk) %>% 
     ggplot() +
-    aes(y = col, x = abs(sd_diff), color = grp_adj) +
+    aes(y = lab, x = abs(sd_diff), color = grp_adj) +
     geom_vline(aes(xintercept = 0.1), size = 1, linetype = 2) +
     geom_point(size = 2) +
     geom_path(aes(group = grp_adj), size = 0.5) +
@@ -597,10 +764,12 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
       color = guide_legend('', override.aes = list(size = 3))
     ) +
     theme(
+      axis.text.y = ggtext::element_markdown(),
+      plot.title = ggtext::element_markdown(size = 16, face = 'bold'),
       legend.position = 'top'
     ) +
     labs(
-      title = sprintf('Bias among coefficients for %s probability model', title_suffix_1),
+      title = sprintf('Bias among coefficients for <i>%s</i> probability model', title_suffix_1),
       x = 'Absolute standardized mean difference',
       y = NULL
     )
@@ -630,27 +799,43 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
       across(term, ~fct_reorder(.x, estimate)),
       lo = estimate - 1.96 * std.error,
       hi = estimate + 1.96 * std.error,
-      is_signif = if_else(p.value < 0.05, TRUE, FALSE)
+      is_signif = if_else(sign(lo) == sign(hi), TRUE, FALSE)
     )
   coefs_epa
   
   viz_epa <-
     coefs_epa %>%
+    mutate(
+      color = 
+        case_when(
+          str_detect(term, !!col_trt) ~ '#000000', #  gplots::col2hex('cornflowerblue'), #  gplots::col2hex('#0000ff'), 
+          TRUE ~ gplots::col2hex('grey30')
+        ),
+      tag = 
+        case_when(
+          str_detect(term, !!col_trt) ~ 'b',
+          TRUE ~ 'span'
+        )
+      lab = glue::glue('<{tag} style="color:{color}">{term}</{tag}>'),
+      across(lab, ~fct_reorder(.x, estimate))
+    ) %>% 
     ggplot() +
-    aes(y = term, x = estimate, color = is_signif) +
+    aes(y = lab, x = estimate, color = is_signif) +
     geom_point(size = 2) +
     geom_errorbarh(aes(xmin = lo, xmax = hi), size = 1) +
     scale_color_manual(values = c(`TRUE` = 'red', `FALSE` = 'black')) +
     geom_vline(data = tibble(), aes(xintercept = 0), linetype = 2) +
     guides(color = guide_legend('Is statistically significant?')) +
     theme(
+      axis.text.y = ggtext::element_markdown(),
+      plot.title = ggtext::element_markdown(size = 16, face = 'bold'),
       legend.text = element_text(size = 12),
-      legend.title = element_text(size = 12),
+      legend.title = element_text(size = 10),
       legend.position = 'top' # ,
       # legend.box = element_rec()
     ) +
     labs(
-      title = sprintf('Linear regression EPA model coefficients, adjusting for %s', title_suffix_2),
+      title = sprintf('Linear regression EPA model coefficients, adjusting for <i>%s</i>', title_suffix_2),
       y = NULL, x = 'Estimate +- 1.96 standard error'
     )
   viz_epa
@@ -659,9 +844,9 @@ do_causal_stuff <- function(col_trt = .get_valid_col_trt()) {
 }
 
 
-# .get_valid_col_trt() %>% walk(do_causal_stuff)
-features_match_is_target_picked <- 'is_target_picked' %>% do_causal_stuff()
-features_match_has_same_defender <- 'has_same_defender' %>% do_causal_stuff()
+# .get_valid_col_trt() %>% walk(do_causal_analysis)
+features_match_is_target_picked <- 'is_target_picked' %>% do_causal_analysis()
+features_match_has_same_defender <- 'has_same_defender' %>% do_causal_analysis()
 
 # t test stuff ----
 .simplify_pick_features <- function(data) {
@@ -682,7 +867,6 @@ features_match_has_same_defender <- 'has_same_defender' %>% do_causal_stuff()
 }
 
 # gtsummary offensive t tests----
-
 .get_valid_col_value <- function() {
   c('epa', 'n')
 }
@@ -876,109 +1060,109 @@ features_match_has_same_defender_simple <-
   )
 
 # non gtsummary offensive pick play t tests----
-.f_agg_epa <- function(data) {
-  
-  data %>% 
-    group_by(is_target_picked, is_pass_successful) %>% 
-    summarize(across(c(epa), list(median = median, q25 = ~quantile(.x, 0.25), q75 = ~quantile(.x, 0.75)), .names = '{fn}')) %>% 
-    ungroup() %>% 
-    mutate(
-      value = sprintf('%.02f (%.02f, %.02f)', median, q25, q75)
-    )
-}
-
-.f_agg_n <- function(data) {
-  
-  data %>% 
-    group_by(is_target_picked, is_pass_successful) %>% 
-    summarize(n = n()) %>% 
-    ungroup() %>% 
-    group_by(is_target_picked) %>% 
-    mutate(total = sum(n), frac = n / total) %>% 
-    ungroup() %>% 
-    mutate(
-      # is_pass_successful = sprintf('%s (%s)', is_pass_successful, scales::comma(total)),
-      value = sprintf('%s (%s)', scales::comma(n), scales::percent(frac, accuracy = 0.1))
-    )
-}
-
-.f_pivot_agg <- function(data) {
-  data %>% 
-    select(is_target_picked, is_pass_successful, value) %>% 
-    pivot_wider(names_from = is_target_picked, values_from = value) %>% 
-    mutate(
-      across(is_pass_successful, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
-    )
-}
-
-.f_gt <- function(data, subtitle) {
-  
-  data %>% 
-    rename(`Pass Successful?` = is_pass_successful) %>% 
-    gt::gt() %>% 
-    gt::tab_header(
-      subtitle = subtitle,
-      title = gt::md('EPA by pass outcome')
-    ) %>% 
-    gt::cols_label(
-      # `t-test p-value` = gt::md('**t-test\np-value**'),
-      `Target Picked? N` = gt::md('**Target Picked? N**'),
-      `Target Picked? Y` = gt::md('**Target Picked? Y**')
-    )
-}
-
-.f_save_gt <- function(gt, suffix, prefix = c('epa', 'n')) {
-  prefix <- match.arg(prefix)
-  gt %>% 
-    gt::gtsave(filename = file.path(get_bdb_dir_figs(), sprintf('tab_%s%s.png', prefix, suffix)))
-}
-
-do_save_epa_tabs <- function(data, subtitle = NULL, suffix = NULL, sep = '_') {
-
-  tab_epa <- 
-    data %>% 
-    .f_agg_epa() %>% 
-    .f_pivot_agg()
-  tab_epa
-  
-  .t_test_target <- function(cnd = c('Y', 'N')) {
-    t.test(epa ~ is_target_picked, data = data %>% filter(is_pass_successful %>% str_detect(sprintf('%s$', cnd))))
-  }
-
-  t_target_y <- .t_test_target('Y')
-  t_target_n <- .t_test_target('N')
-
-  tab_epa['t-test p-value'] <- 
-    c(t_target_n$p.value, t_target_y$p.value) %>% 
-    sprintf('%0.03f', .)
-  
-  tab_n <- data %>% .f_agg_n() %>% .f_pivot_agg()
-  
-  if(is.null(suffix)) {
-    suffix <- ''
-  } else {
-    suffix <- sprintf('%s%s', sep, suffix)
-  }
-  tab_epa %>% .f_gt(subtitle = subtitle) %>% .f_save_gt(suffix = suffix, prefix = 'epa')
-  tab_n %>% .f_gt(subtitle = subtitle) %>% .f_save_gt(suffix = suffix, prefix = 'n')
-  invisible()
-}
-
-features_simple %>%
-  do_save_epa_tabs(suffix = 'unadjusted_nosubtitle')
-
-features_simple %>% 
-  do_save_epa_tabs(subtitle = 'Before matching', suffix = 'unadjusted')
-
-features_match_is_target_picked_simple %>% 
-  do_save_epa_tabs(
-    subtitle = 'After matching for targeted pick plays', 
-    suffix = 'adjusted_is_target_picked'
-  )
-
-features_match_has_same_defender_simple %>% 
-  do_save_epa_tabs(
-    subtitle = 'After matching for targeted defender coverage', 
-    suffix = 'adjusted_has_same_defender'
-  )
+# .f_agg_epa <- function(data) {
+#   
+#   data %>% 
+#     group_by(is_target_picked, is_pass_successful) %>% 
+#     summarize(across(c(epa), list(median = median, q25 = ~quantile(.x, 0.25), q75 = ~quantile(.x, 0.75)), .names = '{fn}')) %>% 
+#     ungroup() %>% 
+#     mutate(
+#       value = sprintf('%.02f (%.02f, %.02f)', median, q25, q75)
+#     )
+# }
+# 
+# .f_agg_n <- function(data) {
+#   
+#   data %>% 
+#     group_by(is_target_picked, is_pass_successful) %>% 
+#     summarize(n = n()) %>% 
+#     ungroup() %>% 
+#     group_by(is_target_picked) %>% 
+#     mutate(total = sum(n), frac = n / total) %>% 
+#     ungroup() %>% 
+#     mutate(
+#       # is_pass_successful = sprintf('%s (%s)', is_pass_successful, scales::comma(total)),
+#       value = sprintf('%s (%s)', scales::comma(n), scales::percent(frac, accuracy = 0.1))
+#     )
+# }
+# 
+# .f_pivot_agg <- function(data) {
+#   data %>% 
+#     select(is_target_picked, is_pass_successful, value) %>% 
+#     pivot_wider(names_from = is_target_picked, values_from = value) %>% 
+#     mutate(
+#       across(is_pass_successful, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
+#     )
+# }
+# 
+# .f_gt <- function(data, subtitle) {
+#   
+#   data %>% 
+#     rename(`Pass Successful?` = is_pass_successful) %>% 
+#     gt::gt() %>% 
+#     gt::tab_header(
+#       subtitle = subtitle,
+#       title = gt::md('EPA by pass outcome')
+#     ) %>% 
+#     gt::cols_label(
+#       # `t-test p-value` = gt::md('**t-test\np-value**'),
+#       `Target Picked? N` = gt::md('**Target Picked? N**'),
+#       `Target Picked? Y` = gt::md('**Target Picked? Y**')
+#     )
+# }
+# 
+# .f_save_gt <- function(gt, suffix, prefix = c('epa', 'n')) {
+#   prefix <- match.arg(prefix)
+#   gt %>% 
+#     gt::gtsave(filename = file.path(get_bdb_dir_figs(), sprintf('tab_%s%s.png', prefix, suffix)))
+# }
+# 
+# do_save_epa_tabs <- function(data, subtitle = NULL, suffix = NULL, sep = '_') {
+# 
+#   tab_epa <- 
+#     data %>% 
+#     .f_agg_epa() %>% 
+#     .f_pivot_agg()
+#   tab_epa
+#   
+#   .t_test_target <- function(cnd = c('Y', 'N')) {
+#     t.test(epa ~ is_target_picked, data = data %>% filter(is_pass_successful %>% str_detect(sprintf('%s$', cnd))))
+#   }
+# 
+#   t_target_y <- .t_test_target('Y')
+#   t_target_n <- .t_test_target('N')
+# 
+#   tab_epa['t-test p-value'] <- 
+#     c(t_target_n$p.value, t_target_y$p.value) %>% 
+#     sprintf('%0.03f', .)
+#   
+#   tab_n <- data %>% .f_agg_n() %>% .f_pivot_agg()
+#   
+#   if(is.null(suffix)) {
+#     suffix <- ''
+#   } else {
+#     suffix <- sprintf('%s%s', sep, suffix)
+#   }
+#   tab_epa %>% .f_gt(subtitle = subtitle) %>% .f_save_gt(suffix = suffix, prefix = 'epa')
+#   tab_n %>% .f_gt(subtitle = subtitle) %>% .f_save_gt(suffix = suffix, prefix = 'n')
+#   invisible()
+# }
+# 
+# features_simple %>%
+#   do_save_epa_tabs(suffix = 'unadjusted_nosubtitle')
+# 
+# features_simple %>% 
+#   do_save_epa_tabs(subtitle = 'Before matching', suffix = 'unadjusted')
+# 
+# features_match_is_target_picked_simple %>% 
+#   do_save_epa_tabs(
+#     subtitle = 'After matching for targeted pick plays', 
+#     suffix = 'adjusted_is_target_picked'
+#   )
+# 
+# features_match_has_same_defender_simple %>% 
+#   do_save_epa_tabs(
+#     subtitle = 'After matching for targeted defender coverage', 
+#     suffix = 'adjusted_has_same_defender'
+#   )
 

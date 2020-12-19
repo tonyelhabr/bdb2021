@@ -611,36 +611,43 @@ tertiary_example_pick_plays <-
   )
 tertiary_example_pick_plays %>% select(descr, lab)
 
-res_viz <-
-  primary_example_pick_plays %>% 
-  filter(descr == 'y_buffer') %>% 
-  select(descr, game_id, play_id, lab, path) %>%
-  mutate(
-    across(path, ~.x %>% paste0('.png')),
-    viz = pmap(
-      list(game_id, play_id, lab, path),
-      ~plot_play(game_id = ..1, play_id = ..2, subtitle = ..3, plays = plays, save = TRUE, path = ..4)
-    )
-  )
-res_viz
+# res_viz <-
+#   primary_example_pick_plays %>% 
+#   filter(descr == 'y_buffer') %>% 
+#   select(descr, game_id, play_id, lab, path) %>%
+#   mutate(
+#     across(path, ~.x %>% paste0('.png')),
+#     viz = pmap(
+#       list(game_id, play_id, lab, path),
+#       ~plot_play(game_id = ..1, play_id = ..2, subtitle = ..3, plays = plays, save = TRUE, path = ..4)
+#     )
+#   )
+# res_viz
 
 res_anim <-
   list(
-    primary_example_pick_plays %>% 
-      filter(descr != 'y_buffer') %>% 
-      mutate(nearest_defender = FALSE),
+    primary_example_pick_plays,
     secondary_example_pick_plays,
     tertiary_example_pick_plays
   ) %>% 
   reduce(bind_rows) %>% 
-  select(descr, game_id, play_id, lab, path, nearest_defender) %>% 
-  head(2) %>% 
-  mutate(across(nearest_defender, ~coalesce(.x, TRUE))) %>% 
+  select(descr, game_id, play_id, lab, path) %>% 
+  # head(2) %>% 
+  mutate(nearest_defender = if_else(str_detect(path, 'defender'), TRUE, FALSE)) %>% 
   mutate(
     across(path, ~.x %>% paste0('.gif')),
     anim = pmap(
       list(game_id, play_id, lab, path, nearest_defender),
-      ~animate_play(game_id = ..1, play_id = ..2, subtitle = ..3, plays = plays, save = TRUE, path = ..4, nearest_defender = ..5, target_probability = FALSE)
+      ~animate_play(
+        game_id = ..1, 
+        play_id = ..2,
+        subtitle = ..3,
+        plays = plays, 
+        save = TRUE, 
+        path = ..4, 
+        nearest_defender = ..5, 
+        target_probability = FALSE
+      )
     )
   )
 

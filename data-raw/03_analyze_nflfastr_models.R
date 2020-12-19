@@ -2,11 +2,15 @@
 library(tidyverse)
 # data('pick_play_ids_adj', package = 'bdb2021')
 library(bdb2021)
+theme_set_and_update_bdb()
 
-.path <- partial(file.path, get_bdb_dir_data(), ... = )
-features <- .path('features.parquet') %>% arrow::read_parquet()
-path_model_data <- .path('nflfastr_model_data_2018.parquet')
-path_ep_model <- .path('nflfastr_ep')
+.path_data <- partial(file.path, get_bdb_dir_data(), ... = )
+.path_figs <- partial(file.path, get_bdb_dir_figs(), ... = )
+features <- .path_data('features.parquet') %>% arrow::read_parquet()
+path_model_data <- .path_data('nflfastr_model_data_2018.parquet')
+path_ep_model_nflfastr <- .path_data('ep_model_nflfastr')
+path_ep_model_bdb <- .path_data('ep_model_bdb')
+path_epa_model_bdb <- .path_data('epa_model_bdb')
 
 if(!file.exists(path_model_data)) {
   
@@ -292,17 +296,17 @@ if(!file.exists(path_model_data)) {
       epa_nflfastr,
       
       label,
-      half_seconds_remaining,
+      half_seconds = half_seconds_remaining,
       yardline_100,
-      home,
+      is_home = home,
       retractable,
       dome,
       outdoors,
       ydstogo,
       # era0, era1, era2, era3, era4, # removed these
       down1, down2, down3, down4,
-      posteam_timeouts_remaining,
-      defteam_timeouts_remaining,
+      off_timeouts = posteam_timeouts_remaining,
+      def_timeouts = defteam_timeouts_remaining,
       Total_W_Scaled
     ) %>%
     # There are some duplicates for some reason... Seems to be due to the nflfastR data.
@@ -329,13 +333,6 @@ params <-
     min_child_weight = 1
   )
 
-model_data_bdb <-
-  model_data %>% 
-  inner_join(
-    features %>% 
-      select(game_id, play_id, x, y, x_o, dist_o, x_d, dist_d, is_target_picked, has_same_defender, epa_bdb = epa)
-  )
-
 .ep_model_select <- function(pbp, ...) {
   pbp %>% 
     dplyr::select(
@@ -357,7 +354,8 @@ model_data_bdb <-
     )
 }
 
-if(FALSE) {
+if(!file.exists(path_ep_model_nflfastr)) {
+  
   model_mat <- 
     model.matrix(
       ~.+0, 
@@ -381,94 +379,42 @@ if(FALSE) {
       nrounds = nrounds, 
       verbose = 2
     )
-  path_ep_model_nflfastr <- .path('ep_model_nflfastr')
+  
   xgboost::xgb.save(ep_model, path_ep_model_nflfastr)
-  
-  # # no weight and no dgmatrix maybe makes it easier to work with with other packages?
-  # ep_model_nowt <- 
-  #   xgboost::xgboost(
-  #     params = params, 
-  #     data = model_mat, 
-  #     label = model_data$label,
-  #     nrounds = nrounds, 
-  #     verbose = 2
-  #   )
-  # path_ep_model_nowt <- file.path('inst', 'ep_model_nowt')
-  # xgboost::xgb.save(ep_model, path_ep_model_nowt)
-  
-  # iml ----
-  # https://github.com/christophM/interpretable-ml-book/blob/master/manuscript/05.2-agnostic-pdp.Rmd
-  df <- model_mat %>% as.data.frame()
-  .f_predict <- function(object, newdata) {
-    newdata <- xgboost::xgb.DMatrix(data.matrix(newdata), missing = NA)
-    # browser()
-    matrix(predict(ep_model, newdata), ncol = 7, byrow = TRUE)
-  }
-  pred <- iml::Predictor$new(
-    ep_model, 
-    type = 'prob',
-    class = 1,
-    data = model_mat %>% as.data.frame() %>% mutate(across(matches('down'), factor)), 
-    y = model_data$label, 
-    predict.fun = .f_predict
-  )
-  # shap <- iml::Shapley$new(pred, x.interest = df[1,], sample.size = 10)
-  pdp <- iml::FeatureEffect$new(pred, feature = 'down3', method = 'ice')
-  pdp$plot()
-  
-  # generic shap ----
-  # https://bradleyboehmke.github.io/HOML/iml.html#xgboost-and-built-in-shapley-values
-  feature_values_init <-
-    model_mat %>%
-    as.data.frame() %>%
-    as_tibble() %>% 
-    mutate_all(scale) %>%
-    gather(feature, feature_value)
-  feature_values_init
-  
-  feature_values <-
-    feature_values_init %>% 
-    pull(feature_value)
-  feature_values %>% length() %>% {. * 7}
-  shap_df_init <-
-    ep_model %>% 
-    predict(newdata = full_train, predcontrib = TRUE) %>%
-    as.data.frame() %>%
-    as_tibble() %>% 
-    select(-matches('BIAS'))
-  shap_df_init
-  
-  shap_df <-
-    shap_df_init %>% 
-    gather(feature, shap_value) %>%
-    # mutate(feature_value = feature_values) %>%
-    group_by(feature) %>%
-    mutate(shap_importance = mean(abs(shap_value)))
-  shap_df
-  
-  p1 <- ggplot(shap_df, aes(x = shap_value, y = reorder(feature, shap_importance))) +
-    ggbeeswarm::geom_quasirandom(groupOnX = FALSE, varwidth = TRUE, size = 0.4, alpha = 0.25) +
-    xlab("SHAP value") +
-    ylab(NULL)
-  p1
-  
-  p2 <- shap_df %>% 
-    select(feature, shap_importance) %>%
-    filter(row_number() == 1) %>%
-    ggplot(aes(x = reorder(feature, shap_importance), y = shap_importance)) +
-    geom_col() +
-    coord_flip() +
-    xlab(NULL) +
-    ylab("mean(|SHAP value|)")
-  p2
-  
-  gridExtra::grid.arrange(p1, p2, nrow = 1)
+} else {
+  ep_model <- xgboost::xgb.load(path_ep_model_nflfastr)
 }
 
 # bdb ep ----
 .binary_factor_to_int <- function(x) {
   x %>% as.integer() %>% {. - 1L}
 }
+
+.features_control <- c('x', 'y', 'x_o', 'dist_o', 'x_d', 'dist_d')
+# These are actually the dummy variables, so can't use these directly with the select below.
+.features_treatment <- 
+  c(
+    'is_target_picked0', 'is_target_picked1', 
+    'has_same_defender0', 'has_same_defender1'
+  )
+model_data_bdb <-
+  model_data %>% 
+  inner_join(
+    features %>%
+      select(
+        game_id,
+        play_id,
+        x,
+        y,
+        x_o,
+        dist_o,
+        x_d,
+        dist_d,
+        is_target_picked,
+        has_same_defender,
+        epa_bdb = epa
+      )
+  )
 
 .bdb_model_select <- function(data, ...) {
   data %>% 
@@ -493,29 +439,32 @@ model_mat_bdb <-
   )
 model_mat_bdb
 
-full_train_bdb_ep <-
-  xgboost::xgb.DMatrix(
-    model_mat_bdb,
-    label = model_data_bdb$label,
-    weight = model_data_bdb$Total_W_Scaled
-  )
-
-ep_model_bdb <- 
-  xgboost::xgboost(
-    params = params, 
-    data = full_train_bdb_ep, 
-    nrounds = nrounds, 
-    verbose = 2
-  )
-path_ep_model_bdb <- .path('ep_model_bdb')
-xgboost::xgb.save(ep_model_bdb, path_ep_model_bdb)
+if(!file.exists(path_ep_model_bdb)) {
+  full_train_bdb_ep <-
+    xgboost::xgb.DMatrix(
+      model_mat_bdb,
+      label = model_data_bdb$label,
+      weight = model_data_bdb$Total_W_Scaled
+    )
+  
+  ep_model_bdb <- 
+    xgboost::xgboost(
+      params = params, 
+      data = full_train_bdb_ep, 
+      nrounds = nrounds, 
+      verbose = 2
+    )
+  xgboost::xgb.save(ep_model_bdb, path_ep_model_bdb)
+} else {
+  ep_model_bdb <- xgboost::xgb.load(path_ep_model_bdb)
+}
 
 # Reference: https://bradleyboehmke.github.io/HOML/iml.html#xgboost-and-built-in-shapley-values
-do_save_shap_plots <- function(fit, data, suffix = NULL, sep = '_', title = '{nflfastR} EP model with added features') {
-  # data <- model_mat_bdb
-  # fit <- ep_model_bdb
+do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = '{nflfastR} EP model with added features', subtitle = NULL) {
+  # mat <- model_mat_bdb
+  # fit <- epa_model_bdb
   feature_values_init <-
-    fit %>%
+    mat %>%
     as.data.frame() %>%
     mutate_all(scale) %>%
     # pivot_longer(matches('.*'), names_to = 'feature', values_to = 'feature_value') %>% 
@@ -527,70 +476,90 @@ do_save_shap_plots <- function(fit, data, suffix = NULL, sep = '_', title = '{nf
   feature_values <-
     feature_values_init %>% 
     pull(feature_value)
-  feature_values %>% length()
+  feature_values
   
-  shap_df_init <-
-    ep_model_bdb %>% 
-    predict(newdata = data, predcontrib = TRUE) %>%
+  shap_init <-
+    fit %>% 
+    predict(newdata = mat, predcontrib = TRUE) %>%
     as.data.frame() %>%
     as_tibble() %>% 
     select(-matches('BIAS'))
-  shap_df_init
+  shap_init
   
-  shap_df <-
-    shap_df_init %>% 
-    mutate(idx = row_number()) %>% 
-    pivot_longer(-idx, names_to = 'feature', values_to = 'shap_value') %>%
-    # gather(feature, shap_value) %>% 
-    # mutate(feature_value = feature_values) %>%
-    separate(feature, into = c('feature', 'feature_idx'), sep = '[.]') %>% 
-    mutate(across(feature_idx, ~coalesce(.x, '0') %>% as.integer() %>% {. + 1L}))
+  if(any(str_detect(names(shap_init), '[.]6$'))) {
+    shap <-
+      shap_init %>% 
+      mutate(idx = row_number()) %>% 
+      pivot_longer(-idx, names_to = 'feature', values_to = 'shap_value') %>%
+      # gather(feature, shap_value) %>% 
+      # mutate(feature_value = feature_values) %>%
+      separate(feature, into = c('feature', 'feature_idx'), sep = '[.]') %>% 
+      mutate(across(feature_idx, ~coalesce(.x, '0') %>% as.integer() %>% {. + 1L}))
+    
+    # shap_agg_by_idx <-
+    #   shap %>% 
+    #   # left_join(
+    #   #   tibble(
+    #   #     feature_idx = seq(1, 7, by = 1),
+    #   #     pts = c(7, -7, 3, -3, 2, -2, 0)
+    #   #   )
+    #   # ) %>% 
+    #   # mutate(ep = shap_value * pts) %>% 
+    #   group_by(idx, feature) %>% 
+    #   summarize(
+    #     across(c(shap_value), sum)
+    #   ) %>% 
+    #   ungroup()
+    # shap_agg_by_idx
+  } else {
+    shap <- 
+      shap_init %>% 
+      mutate(idx = row_number()) %>% 
+      pivot_longer(-idx, names_to = 'feature', values_to = 'shap_value')
+    shap
+  }
   
   shap_agg_by_idx <-
-    shap_df %>% 
-    left_join(
-      tibble(
-        feature_idx = seq(1, 7, by = 1),
-        pts = c(7, -7, 3, -3, 2, -2, 0)
-      )
-    ) %>% 
-    mutate(ep = shap_value * pts) %>% 
+    shap %>% 
     group_by(idx, feature) %>% 
     summarize(
-      across(c(ep, shap_value), sum)
+      across(shap_value, sum)
     ) %>% 
     ungroup()
-  shap_agg_by_idx
   
   shap_agg_by_feature <-
     shap_agg_by_idx %>% 
     group_by(feature) %>% 
     summarize(
-      across(c(ep, shap_value), ~mean(abs(.x))),
+      across(shap_value, ~mean(abs(.x))),
     ) %>% 
     ungroup() %>% 
     mutate(
-      across(c(ep, shap_value), list(rnk = ~row_number(desc(.x))))
+      across(shap_value, list(rnk = ~row_number(desc(.x))))
     ) %>% 
     arrange(shap_value_rnk)
   shap_agg_by_feature
   
   set.seed(42)
-  shap_df_sample <- shap_df %>% group_by(feature) %>% sample_frac(0.1) %>% ungroup()
+  shap_sample <- shap_agg_by_idx %>% group_by(feature) %>% sample_frac(0.1) %>% ungroup()
   
-  
-  .features_pick <- c('x', 'y', 'x_o', 'dist_o', 'x_d', 'dist_d', 'is_target_picked0', 'is_target_picked1', 'has_same_defender0', 'has_same_defender1')
   .prep_viz_data <- function(data) {
     data %>% 
       mutate(
-        color = case_when(feature %in% .features_pick ~ '#0000FF', TRUE ~ '#4D4D4D'),
-        lab = glue::glue("<span style='color:{color}'>{feature}</span>"),
+        color = 
+          case_when(
+            # feature %in% .features_control ~ '#0000FF', 
+            # feature %in% .features_treatment ~ '#FF0000', 
+            str_detect(feature, .features_control) ~ gplots::col2hex('cornflowerblue')
+            TRUE ~ '#4D4D4D'
+          ),
+        lab = glue::glue("<b style='color:{color}'>{feature}</b>"),
         across(lab, ~fct_reorder(.x, -shap_value_rnk))
       )
   }
-
+  
   viz_shap_swarm <- 
-    shap_df_sample %>% 
+    shap_sample %>% 
     left_join(shap_agg_by_feature %>% select(feature, shap_value_rnk)) %>% 
     .prep_viz_data() %>% 
     ggplot() +
@@ -598,24 +567,31 @@ do_save_shap_plots <- function(fit, data, suffix = NULL, sep = '_', title = '{nf
     ggbeeswarm::geom_quasirandom(
       groupOnX = FALSE, 
       varwidth = TRUE, 
-      size = 0.4, 
-      alpha = 0.25
+      color = '#4D4D4D',
+      size = 0.2, 
+      alpha = 0.3
+    ) +
+    theme(
+      axis.text.y = ggtext::element_markdown()
     ) +
     labs(
       title = title,
+      subtitle = subtitle,
       x = 'SHAP value',
       y = NULL
     )
+  
   if(is.null(suffix)) {
     suffix <- ''
   } else {
     suffix <- sprintf('%s%s', sep, suffix)
   }
+  
   save_plot(
     viz_shap_swarm,
-    path = file.path(get_bdb_dir_figs(), sprintf('shap_swarm%s.png', suffix))
+    path = .path_figs(sprintf('shap_swarm%s.png', suffix))
   )
-
+  
   viz_shap_agg <- 
     shap_agg_by_feature %>% 
     .prep_viz_data() %>% 
@@ -628,6 +604,7 @@ do_save_shap_plots <- function(fit, data, suffix = NULL, sep = '_', title = '{nf
     ) +
     labs(
       title = title,
+      subtitle = subtitle,
       y = NULL,
       x = 'mean(|SHAP value|)'
     )
@@ -635,42 +612,43 @@ do_save_shap_plots <- function(fit, data, suffix = NULL, sep = '_', title = '{nf
   
   save_plot(
     viz_shap_agg,
-    path = file.path(get_bdb_dir_figs(), sprintf('shap_agg%s.png', suffix))
+    path = .path_figs(sprintf('shap_agg%s.png', suffix))
   )
   shap_agg_by_feature
 }
 
-save_shap_plots(
-  fit = ep_model_bdb,
-  data = model_mat_bdb
-)
-
-library(xgboost)
-library(iml)
-.f_predict_bdb <- function(object, newdata) {
-  newdata <- xgboost::xgb.DMatrix(data.matrix(newdata), missing = NA)
-  matrix(predict(ep_model_bdb, newdata), ncol = 7, byrow = TRUE)
-}
-
-df_bdb <- model_mat_bdb %>% as.data.frame() %>% mutate(across(matches('[0-9]$'), factor))
-pred <- iml::Predictor$new(
-  ep_model_bdb, 
-  type = 'prob',
-  class = 1,
-  data = df_bdb, 
-  # y = full_train_bdb_ep$label, 
-  y = model_data_bdb$label,
-  predict.fun = .f_predict_bdb
-)
-# shap <- iml::Shapley$new(pred, x.interest = df[1,], sample.size = 10)
-pdp <- iml::FeatureEffect$new(pred, feature = 'dist_d')
-pdp$plot()
-ggsave(filename = 'temp.png')
-plot(iml::Interaction$new(pred))
-
-# bdb epa ----
+# do_save_shap_plots(
+#   fit = ep_model_bdb,
+#   data = model_mat_bdb
+# )
 
 if(FALSE) {
+  library(xgboost)
+  library(iml)
+  .f_predict_bdb <- function(object, newdata) {
+    newdata <- xgboost::xgb.DMatrix(data.matrix(newdata), missing = NA)
+    matrix(predict(ep_model_bdb, newdata), ncol = 7, byrow = TRUE)
+  }
+  
+  df_bdb <- model_mat_bdb %>% as.data.frame() %>% mutate(across(matches('[0-9]$'), factor))
+  pred <- iml::Predictor$new(
+    ep_model_bdb, 
+    type = 'prob',
+    class = 1,
+    data = df_bdb, 
+    # y = full_train_bdb_ep$label, 
+    y = model_data_bdb$label,
+    predict.fun = .f_predict_bdb
+  )
+  # shap <- iml::Shapley$new(pred, x.interest = df[1,], sample.size = 10)
+  pdp <- iml::FeatureEffect$new(pred, feature = 'dist_d')
+  pdp$plot()
+  ggsave(filename = 'temp.png')
+  plot(iml::Interaction$new(pred))
+}
+# bdb epa ----
+
+if(!file.exists(path_epa_model_bdb)) {
   full_train_bdb_epa <-
     xgboost::xgb.DMatrix(
       model_mat_bdb,
@@ -678,19 +656,20 @@ if(FALSE) {
       weight = model_data_bdb$Total_W_Scaled
     )
   
-  # just guessing on these params
-  nrounds_bdb_epa <- 500
+  # based on the hyperparameter tuning
+  nrounds_bdb_epa <- 522
+  # best_result %>% as.list() %>% datapasta::vector_paste()
   params_bdb_epa <-
     list(
-      # booster = 'gbtree',
+      booster = 'gbtree',
       objective = 'reg:squarederror',
-      eval_metric = c('rmse'),
-      eta = 0.025,
-      # gamma = 1,
-      # subsample = 0.8,
-      # colsample_bytree = 0.8,
+      eval_metric = 'rmse',
+      eta = 0.005,
+      gamma = 0.6304749,
+      subsample = 0.5729378,
+      colsample_bytree = 0.8333333,
       max_depth = 5,
-      min_child_weight = 1
+      min_child_weight = 11
     )
   
   epa_model_bdb <- 
@@ -700,55 +679,141 @@ if(FALSE) {
       nrounds = nrounds_bdb_epa, 
       verbose = 2
     )
-  path_epa_model_bdb <- file.path('inst', 'ep_model_bdba')
   xgboost::xgb.save(epa_model_bdb, path_epa_model_bdb)
+} else {
+  epa_model_bdb <- xgboost::xgb.load(path_epa_model_bdb)
+}
+
+do_save_shap_plots(
+  title = '{nflfastR} EPA model with added features',
+  fit = epa_model_bdb,
+  mat = model_mat_bdb
+)
+
+# do this once
+if(FALSE) {
+  library(tidymodels)
   
-  feature_values_init <-
-    model_data_bdb %>%
-    as.data.frame() %>%
-    as_tibble() %>% 
-    mutate_all(scale) %>%
-    gather(feature, feature_value)
-  feature_values_init
+  set.seed(42)
+  folds <- caret::createFolds(model_data_bdb$epa_bdb, k = 10, list = TRUE, returnTrain = FALSE)
+  names(folds) <- NULL
   
-  feature_values <-
-    feature_values_init %>% 
-    pull(feature_value)
-  feature_values %>% length()
+  grid <- 
+    dials::grid_latin_hypercube(
+      dials::finalize(mtry(), model_data_bdb),
+      dials::min_n(),
+      dials::tree_depth(),
+      dials::learn_rate(),
+      dials::loss_reduction(),
+      sample_size = dials::sample_prop(),
+      size = 20
+    )
   
-  shap_df_init <-
-    epa_model_bdb %>% 
-    predict(newdata = full_train_bdb_epa, predcontrib = TRUE) %>%
-    as.data.frame() %>%
-    as_tibble() %>% 
-    select(-matches('BIAS'))
-  shap_df_init
+  grid <-
+    grid %>% 
+    mutate(
+      learn_rate = .1 * ((1 : nrow(grid)) / nrow(grid)),
+      mtry = mtry / length(model_data)
+    )
+  grid
   
-  shap_df <-
-    shap_df_init %>% 
-    gather(feature, shap_value) %>%
-    mutate(feature_value = feature_values) %>%
-    group_by(feature) %>%
-    mutate(shap_importance = mean(abs(shap_value)))
-  shap_df
+  # function to search over hyperparameter grid
+  .get_metrics <- function(df, row = 1) {
+    
+    params <-
+      list(
+        booster = 'gbtree',
+        objective = 'reg:squarederror',
+        eval_metric = c('rmse'),
+        eta = df$learn_rate,
+        gamma = df$loss_reduction,
+        subsample= df$sample_size,
+        colsample_bytree= df$mtry,
+        max_depth = df$tree_depth,
+        min_child_weight = df$min_n
+      )
+    
+    #train
+    epa_cv_model <- xgboost::xgb.cv(
+      data = full_train_bdb_epa, params = params, nrounds = nrounds,
+      folds = folds, metrics = list('rmse'),
+      early_stopping_rounds = 10, print_every_n = 10
+    )
+    
+    output <- params
+    output$iter = epa_cv_model$best_iteration
+    output$rmse = epa_cv_model$evaluation_log[output$iter]$test_rmse_mean
+    output$error = epa_cv_model$evaluation_log[output$iter]$test_error_mean
+    
+    this_param <- bind_rows(output)
+    
+    path <- 'inst/epa_cv_model_bdb.rds'
+    if (row == 1) {
+      write_rds(this_param, path)
+    } else {
+      prev <- path %>% read_rds()
+      for_save <- bind_rows(prev, this_param)
+      write_rds(for_save, path)
+    }
+    
+    this_param
+  }
   
-  shap_df %>% mutate(rnk = row_number(shap_importance)) %>% filter(rnk <= 20)
+  results <- map_df(1:nrow(grid), function(x) {
+    
+    cat(glue::glue('Row {x}'), sep = '\n')
+    .get_metrics(grid %>% slice(x), row = x)
+    
+  })
   
-  p1 <- ggplot(shap_df, aes(x = shap_value, y = reorder(feature, shap_importance))) +
-    ggbeeswarm::geom_quasirandom(groupOnX = FALSE, varwidth = TRUE, size = 0.4, alpha = 0.25) +
-    xlab("SHAP value") +
-    ylab(NULL)
-  p1
-  ggsave(p1, filename = file.path(get_bdb_epa_dir_figs(), 'shap_swarm.png'))
+  best_result <- results %>% slice_min(rmse)
   
-  # SHAP importance plot
-  p2 <- shap_df %>% 
-    select(feature, shap_importance) %>%
-    filter(row_number() == 1) %>%
-    ggplot(aes(x = reorder(feature, shap_importance), y = shap_importance)) +
-    geom_col() +
-    coord_flip() +
-    xlab(NULL) +
-    ylab("mean(|SHAP value|)")
-  p2
+  results %>%
+    select(rmse, eta, gamma, subsample, colsample_bytree, max_depth, min_child_weight) %>%
+    pivot_longer(
+      -rmse,
+      values_to = 'value',
+      names_to = 'parameter'
+    ) %>%
+    ggplot() +
+    aes(x = value, y = rmse, color = parameter) +
+    geom_point(show.legend = FALSE) +
+    facet_wrap(~parameter, scales = 'free_x') +
+    labs(x = NULL, y = 'logloss') +
+    theme_minimal()
+}
+
+# require(xgboost)
+.f_predict_bdb_epa <- function(object, newdata) {
+  newdata <- xgboost::xgb.DMatrix(data.matrix(newdata), missing = NA)
+  predict(epa_model_bdb, newdata)
+}
+
+set.seed(42)
+folds <- caret::createFolds(model_data_bdb$epa_bdb, k = 10, returnTrain = FALSE)
+names(folds) <- NULL
+model_mat_bdb_sample <- model_mat_bdb[folds[[1]], ]
+df_bdb <- model_mat_bdb_sample %>% as.data.frame() %>% mutate(across(matches('[a-z][0-9]$'), factor))
+
+pred <- iml::Predictor$new(
+  ep_model_bdb, 
+  type = 'prob',
+  class = 1,
+  data = df_bdb, 
+  # y = full_train_bdb_ep$label, 
+  y = model_data_bdb[folds[[1]], ]$label,
+  predict.fun = .f_predict_bdb_epa
+)
+fe <- iml::FeatureEffect$new(pred, feature = c('yardline_100', 'ydstogo'), method = 'ale', grid.size = 30)
+if(FALSE) {
+viz_ale_init <- fe$plot(rug = TRUE, show.data = TRUE)
+viz_ale_init +  scale_fill_gradient("ALE", low = "red", high = "yellow") # scale_fill_viridis_c(palette = 'B', direction = -1)
+viz_ale <-
+  viz_ale_init + 
+  scale_fill_viridis_c(palette = 'B', direction = -1) +
+  labs(
+    title = ''
+  )
+viz_ale
+ggsave(plot = viz_ale_init, filename = 'temp.png', width = 20, height = 10)
 }
