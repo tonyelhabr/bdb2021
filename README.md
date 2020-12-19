@@ -1,7 +1,7 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# Introduction
+# 0\. Introduction
 
 I attempt to quantify whether there is a significant relationships
 between play success, as measured by expected points added (EPA), when
@@ -14,18 +14,20 @@ exposed to one or both of the following “treatments”:
     of the throw is or is not the same as the defender at the time of
     the snap.\[1\]
 
-Both when using a causal approach and a more traditional machine
-learning approach, I find no evidence for targeted pick route
-combinations having a significant effect on play success. This contrasts
-with the result found from simply comparing the difference in EPA means
-with [t-tests](https://en.wikipedia.org/wiki/Student%27s_t-test), i.e. a
+Both when using a [causal
+approach](https://en.wikipedia.org/wiki/Causal_analysis) and a more
+traditional machine learning approach, I find no evidence for targeted
+pick route combinations having a significant effect on play success.
+This contrasts with the result found from simply comparing the
+difference in EPA means with
+[t-tests](https://en.wikipedia.org/wiki/Student%27s_t-test), i.e. a
 [Frequentist
-approach](https://en.wikipedia.org/wiki/Frequentist_inference)).
+approach](https://en.wikipedia.org/wiki/Frequentist_inference).
 Likewise, when investigating the role the targeted defender in pick
 plays, I find that the causal and machine learning approaches agree with
 one another, but disagree with the un-adjusted Frequentist implication
 that there is a significant difference between a strict, man-to-man
-coverage and other coverages in reducing play succes.
+coverage and other coverages in reducing play success.
 
 ## Motivation
 
@@ -118,7 +120,7 @@ coached defenders to react dynamically in response to certain offensive
 actions. This analysis cannot, and does not try to, quantify these
 unknown factors. I simply focus on what can be quantified.
 
-# 1\. Identifying Pick Plays
+# 1\. Identifying Pick Route Combinations
 
 ## Methodology
 
@@ -325,7 +327,7 @@ Next is a high EPA example in which the assigned defender on a target
 pick route combination is the same at both the snap and the throw.
 Without a clip of the actual play, it seems to me that the success of
 this play is probably attributable to a juke performed by Cooper Kupp
-(18) and/or overcommitting from Chidobe Awuzie (24), not space created
+(18) and/or over-committing from Chidobe Awuzie (24), not space created
 as a result of his pick off the line with Robert Woods (17).
 
 ![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_w_same_defender_pick_play.gif)
@@ -337,7 +339,7 @@ close, man-to-man defense he played (although, subjectively, he does
 guard Chester Rogers (80) pretty closely). Rather, the low EPA seems
 mostly attributable to a bad decision made by Andrew Luck (12).
 
-![](https://github.com/tonyelhabr/bdb2021-dataraw/master/figs/lowest_epa_w_same_defender_pick_play.gif)
+![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/lowest_epa_w_same_defender_pick_play.gif)
 
 # 3\. Analysis
 
@@ -439,30 +441,29 @@ follows a question mark `?` indicates that the condition is not true.)
 
 ![viz\_ep\_swarm](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_epa_swarm.png)
 
-Notably, 7 of the 9 t-tests show statistically significant means at a
-significance threshold of 0.05.
+Only 2 of the 9 t-tests show that there is a lack of a significant
+difference in means at threshold of 0.05.
 
-The insignificant difference for `"EPA ~ Same Defender? Y"` (i.e. EPA
-when the targeted receiver is covered by their initial defender at the
-time of the throw is not significantly different on pick plays versus
-all other passes) implies that man-to-man coverage on the targeted
-receiver does an equally sufficient job of stopping pick plays as
-compared to all other passes, while non-man coverage (`"EPA ~ Same
-Defender? N"`) does a significantly worse job at stopping pick plays.
-(Note that `"EPA ~ Same Defender? N"` has a statistically significant
-difference in means, and the mean for the targeted pick plays is
-higher.)
-
-The insignificant difference for `"EPA | Pass Successful? N & Same
-Defender? N"` (i.e. given an unsuccessful pass, EPA when the targeted
-receiver is not covered by their initial defender is not significantly
-different on pick plays versus all other passes) is best interpreted by
-comparing it to the significant difference in it’s direct counterpart,
-`"EPA | Pass Successful? N & Same Defender? N"`. The latter result
-implies that non-man coverage has a significant relationship with EPA
-when the pass is not successful, while the former result implies that
-man coverage does not. Again, the real-world implication is that non-man
-coverage is impactful.
+  - The insignificant difference for `"EPA | Same Defender? Y"`
+    (i.e. EPA when the targeted receiver is covered by their initial
+    defender at the time of the throw is not significantly different on
+    pick plays versus all other passes) implies that man-to-man coverage
+    on the targeted receiver does an equally sufficient job of stopping
+    pick plays as compared to all other passes, while non-man coverage
+    (`"EPA | Same Defender? N"`) does a significantly worse job at
+    stopping pick plays. (Note that `"EPA | Same Defender? N"` has a
+    statistically significant difference in means, and the mean for the
+    targeted pick plays is higher.)
+  - The insignificant difference for `"EPA | Pass Successful? N & Same
+    Defender? N"` (i.e. given an unsuccessful pass, EPA when the
+    targeted receiver is not covered by their initial defender is not
+    significantly different on pick plays versus all other passes) is
+    best interpreted by comparing it to the significant difference in
+    it’s direct counterpart, `"EPA | Pass Successful? N & Same
+    Defender? N"`. The latter result implies that non-man coverage has a
+    significant relationship with EPA when the pass is not successful,
+    while the former result implies that man coverage does not. Again,
+    the real-world implication is that non-man coverage is impactful.
 
 Let’s go on and break down EPA in an analogous manner, this time basing
 our t-tests on our second treatment of interest—the type of coverage on
@@ -475,19 +476,24 @@ And, for reference, here are the sample sizes.
 
 ![tab\_t\_test\_n\_has\_same\_defender\_unadjusted](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_t_test_n_has_same_defender_unadjusted.png)
 
-There are more insignificant results this time, 5 of the 9 tests,
-including all of 4 of the cases conditioned on plays not involving a
-targeted pick play, i.e. all other pass plays. Compared to the
-significant results for 2 of the 3 cases conditioned on the target being
-involved in a pick (“`EPA ~ Target Picked? Y"` and”`EPA ~ Pass
-Successful? N & Target Picked? Y"`), the implication is that the type of
-coverage on the targeted receiver does matter when the targeted receiver
-is involved in pick route combination. In both of these cases, the
-`"Same Defender? Y"` state has a higher EPA, indicating that man
-coverage on the target is not as successful in stopping targeted pick
-routes. This agrees with the implications found when observing the
-results of the t-tests when the condition of interest was whether the
-targeted receiver was picked or not.
+There are more insignificant results this time, 5 of the 9 tests. To
+highlight a few of the significant results:
+
+  - There is a significant difference in EPA given that the pass is
+    successful (`"EPA | Pass Successful? Y`). The higher EPA value of
+    `"Same Defender? Y"` relative to `"Same Defender? N"` suggests that
+    man coverage on the targeted receiver is disadvantageous for the
+    defense in these cases. Anecdotally, this may imply that man
+    coverage is more likely to give up big plays, which most people
+    would say without ever looking at the numbers.
+
+  - There is a significant difference given that the pass is successful
+    and the targeted receiver is not involved in a pick route
+    combination (`"EPA | Pass Successful? Y & Target Picked? N`). (This
+    is like a subset of the prior result, but specific to non-pick
+    plays.) Again, the implication is that man coverage is worse in
+    these cases, which, from a defensive perspective, is not great since
+    this is a fairly common scenario.
 
 Aside from the t-test implications, I wanted to point out that the
 sample sizes of man coverage and non-man coverage are roughly 1/3 and
@@ -501,11 +507,9 @@ coverage identification is not so bad\!
 
 ## Causal Analysis
 
-### Independent Exposure
-
 When analyzing the relationship of our first exposure—whether the
 targeted receiver is involved in a pick—with a non-causal approach, we
-were basically assuming the following [acyclic graph
+were basically assuming the following [directed acyclic graph
 (DAG)](https://en.wikipedia.org/wiki/Directed_acyclic_graph).
 
 ![dag\_is\_target\_picked\_t-test](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/dag_is_target_picked_t-test.png)
@@ -619,13 +623,8 @@ time the matched data is used.
 
 ![tab\_t\_test\_epa\_is\_target\_picked\_adjusted\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_t_test_epa_is_target_picked_adjusted_is_target_picked.png)
 
-Now we find that there is only 2 (and 1 is barely significant) of 9
-t-tests that shows significance. (Previously there were 7 significant
-results.) Interestingly, the 1 result that is more strongly
-significant—`"EPA | Pass Successful? Y ~ Same Defender? Y"`—does not
-agree with any of the Frequentist findings. Here, the implication is
-that man coverage does worse against pick plays compared to other plays
-given that the pass is successful.\[7\]
+Now we find that all t-tests indicate lack of significance\~ (Previously
+there were 7 significant results.)
 
 For the other exposure of interest—whether the initial defender on the
 targeted receiver is the same at the time of the throw—I used the same
@@ -648,17 +647,24 @@ The regression coefficient plot implies that the type of coverage on the
 targeted receiver does not have a causal relationship with EPA.
 
 Lastly, the apples-to-apples t-test table shows lack of significance
-across nearly all conditions.
+across most conditions, with the exception of 2. The significant results
+indicate that EPA is higher when man-to-man coverage is played on the
+targeted receiver (’`Same Defender? Y"`) and the pass is successful
+(`"EPA | Pass Successful? Y"`), and also when man-to-man coverage is
+played on a successful passes that do not target picks (`"EPA | Pass
+Successful? Y & Target Picked? N"`), even after adjustment
 
 ![tab\_t\_test\_epa\_has\_same\_defender\_adjusted\_has\_same\_defender](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_t_test_epa_has_same_defender_adjusted_has_same_defender.png)
 
 Overall, I would say that there is sufficient evidence against the type
-of coverage on the targeted receiver having a causal effect on EPA. The
-lack of causal effect was perhaps foreshadowed by some of the defender
-play examples. In one case, a defensive lineman made a great individual
-play in intercepting the pass at the line of scrimmage. In another case,
-the QB evidently made a bad decision. Neither should be attributed to
-the type of coverage on the target.
+of coverage on the targeted receiver having a causal effect on EPA,
+although it is interesting that there is some evidence for man-to-man
+coverage on the targeted receiver leading to higher EPA when the pass is
+successful. The overall lack of causal effect was perhaps foreshadowed
+by some of the defender play examples. In one case, a defensive lineman
+made a great individual play in intercepting the pass at the line of
+scrimmage. In another case, the QB evidently made a bad decision.
+Neither should be attributed to the type of coverage on the target.
 
 ## Machine Learning Approach
 
@@ -668,9 +674,9 @@ as follows.
 ![da\_simultaneous](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/dag_simultaneous.png)
 
 The robustness of a causal approach that attempts to account for
-mutliple backdoor pathways given a final response variable that is
+multiple backdoor pathways given a final response variable that is
 non-linear (EPA) is a little suspect to me, hence why I now resort to
-treating this as a “traditional” machine learning problem.\[8\]
+treating this as a “traditional” machine learning problem.\[7\]
 
 I’ll create an `{xgboost}` model that mirrors the `{nflfastR}`
 specification, adding in our terms for the two exposures and the
@@ -683,25 +689,24 @@ values](https://christophm.github.io/interpretable-ml-book/shapley.html).
 ![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/shap_agg.png)
 
 These suggest that whether a play involves a target pick and the type of
-coverage of the targeted defender are not very important for predicting
-EPA.
+coverage of the targeted defender are, for the most part, not very
+important for predicting EPA. I’ll note that `has_same_defender1`
+finishes middle-of-the-pack among features in terms of SHAP, and that
+it’s observation-level values skew slightly above 0. This somewhat
+agrees with what we found at the end of our causal analysis—that
+man-to-man coverage may indeed be related to EPA, given that the pass is
+successful.
 
-We can try to gain some insight from a tiled Partial Dependence Plot
-(PDP) of the two categorical features, where the contoured fill
-represents EPA.
+<!--
+
+We can try to gain some insight from a tiled Partial Dependence Plot (PDP) of the two categorical features, where the contoured fill represents EPA.
 
 ![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/pdp_treatment.png)
 
-It doesn’t seem to indicate much of a relationship at all. To illustrate
-how a PDP looks for features that do have strong relationships with the
-response variable (EPA), see the following plot of yards to the endzone
-and seconds left in the half. Empirically, we know that EPA becomes
-exaggerated towards the end of games and as the offense gets closer to
-the end zone, so it’s no surprise to see high contrast in the contour
-near the 0 `yardline` and 0 `half_seconds` (bottom-left corner) point in
-the plot.
+It doesn't seem to indicate much of a relationship at all. To illustrate how a PDP looks for features that do have strong relationships with the response variable (EPA), see the following plot of yards to the endzone and seconds left in the half. Empirically, we know that EPA becomes exaggerated towards the end of games and as the offense gets closer to the end zone, so it's no surprise to see high contrast in the contour near the 0 `yardline` and 0 `half_seconds` (bottom-left corner) point in the plot.
 
 ![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/pdp_example.png)
+-->
 
 Overall, I would say that the `{xgboost}` results agree with the causal
 findings. In the causal case, we say that there is no causal
@@ -711,7 +716,7 @@ slight difference in how we state our findings, both undeniably contrast
 with the un-adjusted Frequentist findings of significant differences in
 EPA due to the two treatments of interest.
 
-## 4\. Application: Individual Defensive Skill
+# 4\. Application: Quantifying Individual Defensive Skill
 
 While the causal and machine learning approaches suggest that breaking
 out EPA by targeted pick play and/or type of coverage when targeted may
@@ -755,22 +760,23 @@ the targeted receiver.
 So, even if our assessment is that there is no significant relationship
 (or causal relationship, in the case of our causal analysis) between
 targeted pick plays and type of coverage on targets, I think these EPA
-scatters at least tell us that the methodology for identifying picks and
-coverage is somewhat sound.
+scatters at least tell us that the methodologies for identifying picks
+and coverage are somewhat sound.
 
-## Conclusion
+# 5\. Conclusion
 
 While t-tests show statistically significant magnitudes of EPA for two
 treatments—(1) target pick plays and (2) coverage on the targeted
 receiver—adjusting for game situation and player tracking-derived
-features with a causal approach shows that these differences are not
-caused by pick routes. Likewise, a more traditional machine learning
-approach, leveraging an `{xgboost}` model, deduces that there is no
-significant relationship for the two treatments. Despite the lack of
-significance at the holistic level, the individual descriptive results
-(for both offensive and defensive players) derived from identifying pick
-routes and targeted defensive coverage seemed to agree with anecdotal
-knowledge.
+features with a causal approach shows that these differences are mostly
+not significant, except for perhaps that man-to-man coverage on the
+targeted receiver is more likely to result in higher EPA (good for the
+offense) given that the pass is completed. The implications of a
+traditional machine learning approach agree with the causal findings.
+Finally, despite the holistic lack of a meaningful relationship between
+EPA and the two treatments, the individual descriptive results (for both
+offensive and defensive players) derived from identifying pick routes
+and defensive coverage seemed to agree with anecdotal knowledge.
 
 1.  As discussed later, I refer to individual coverage of the targeted
     receiver as “non-man” if the assigned defender for a given receiver
@@ -796,13 +802,13 @@ knowledge.
     position of players, as well as the other tracking features I’ve
     includes, seem like fair game to me.
 
-6.  I’m not sure how much faith I put in this deduction; it could speak
-    to some fault in the matching.
+6.  Of course, EPA is non-linear, so my choice of model may be
+    questionable. My justification is that I’ll ultimately end up using
+    linear regression with the same features after adjusting for the
+    propensity scores (fitted probabilities from the propensity score
+    model), so it makes sense to me to use a linear framework.
 
-7.  I’m not sure how much faith I put in this deduction; it could speak
-    to some fault in the matching.
-
-8.  While I deemed regression with appropriate interactions sufficient
+7.  While I deemed regression with appropriate interactions sufficient
     for modeling the non-linear nature of EPA, I think it becomes
     overwhelming in this case, so I’ve resorted to a non-linear modeling
     framework.

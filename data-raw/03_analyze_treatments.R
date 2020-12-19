@@ -443,7 +443,9 @@ arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'plays_w_pick_info_
 .validate_col_trt <- function(x = .get_valid_col_trt(), ...) {
   match.arg(x, ...)
 }
+
 # dag stuff ----
+if(FALSE) {
 .tidy_dag <- function(ggdag) {
   ggdag %>% 
     ggdag::tidy_dagitty() %>%
@@ -536,7 +538,8 @@ arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'plays_w_pick_info_
         col == 'has_same_defender' ~ 'Same Defender?'
       )
     
-  }  .save_dag(dag, col = col, suffix = suffix, title = sprintf('DAG for t-test for %s', col_pretty))
+  }
+  .save_dag(dag, col = col, suffix = suffix, title = sprintf('DAG for t-test for %s', col_pretty))
 }
 
 cols_trt <- .get_valid_col_trt()
@@ -578,9 +581,9 @@ dag_hard %>%
     title = 'DAG for estimating causal effects of\ntargeted pick route and defender coverage',
     col = 'simultaneous'
   )
+}
 
 # causal stuff ----
-
 .extract_x_from_fmla <- function(fmla) {
   # browser()
   fmla[[3]] %>% 
@@ -712,11 +715,11 @@ do_causal_analysis <- function(col_trt = .get_valid_col_trt()) {
     coord_cartesian(ylim = c(-ylim, ylim), clip = 'off') +
     guides(fill = guide_legend('')) +
     theme(
-      plot.title = ggtext::element_markdown(size = 16, face = 'bold'),
+      plot.title = element_text(size = 16, face = 'bold'),
       legend.position = 'top'
     ) +
     labs(
-      title = sprintf('Probabiliites fit for <i>%s</i> model', title_suffix_1),
+      title = sprintf('Probabiliites fit for %s model', title_suffix_1),
       caption = 'Gray illustrates un-adjusted samples, while colors illustrate adjusted samples.',
       y = '# of plays',
       x = sprintf('P(%s)', axis_label)
@@ -765,11 +768,11 @@ do_causal_analysis <- function(col_trt = .get_valid_col_trt()) {
     ) +
     theme(
       axis.text.y = ggtext::element_markdown(),
-      plot.title = ggtext::element_markdown(size = 16, face = 'bold'),
+      plot.title = element_text(size = 16, face = 'bold'),
       legend.position = 'top'
     ) +
     labs(
-      title = sprintf('Bias among coefficients for <i>%s</i> probability model', title_suffix_1),
+      title = sprintf('Bias among coefficients for %s probability model', title_suffix_1),
       x = 'Absolute standardized mean difference',
       y = NULL
     )
@@ -815,7 +818,7 @@ do_causal_analysis <- function(col_trt = .get_valid_col_trt()) {
         case_when(
           str_detect(term, !!col_trt) ~ 'b',
           TRUE ~ 'span'
-        )
+        ),
       lab = glue::glue('<{tag} style="color:{color}">{term}</{tag}>'),
       across(lab, ~fct_reorder(.x, estimate))
     ) %>% 
@@ -828,14 +831,14 @@ do_causal_analysis <- function(col_trt = .get_valid_col_trt()) {
     guides(color = guide_legend('Is statistically significant?')) +
     theme(
       axis.text.y = ggtext::element_markdown(),
-      plot.title = ggtext::element_markdown(size = 16, face = 'bold'),
+      plot.title = element_text(size = 16, face = 'bold'),
       legend.text = element_text(size = 12),
       legend.title = element_text(size = 10),
       legend.position = 'top' # ,
       # legend.box = element_rec()
     ) +
     labs(
-      title = sprintf('Linear regression EPA model coefficients, adjusting for <i>%s</i>', title_suffix_2),
+      title = sprintf('Linear regression EPA model coefficients, adjusting for %s', title_suffix_2),
       y = NULL, x = 'Estimate +- 1.96 standard error'
     )
   viz_epa
@@ -996,17 +999,17 @@ features_match_has_same_defender <- 'has_same_defender' %>% do_causal_analysis()
   
   tyn <-
     datayn %>% 
-    .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? Y & %s? N', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
+    .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? N & %s? Y', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
   
   tny <-
     datany %>% 
-    .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? N & %s? Y', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
+    .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? Y & %s? N', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
   
   tnn <-
     datann %>% 
     .f_col_gtsummary(col, !!sym(sprintf('%s | Pass Successful? N & %s? N', col_value_pretty, col_other_pretty)) := .value, col_value = col_value)
   
-  .postprocess_t_test_tabs(t, ty, txy, tyy, tyn, tn, txn, tny, tnn, ..., col_value = col_value, col = col, subtitle = subtitle, suffix = suffix)
+  .postprocess_t_test_tabs(t, ty, tn, txy, txn, tyn, tny, tyy, tnn, ..., col_value = col_value, col = col, subtitle = subtitle, suffix = suffix)
 }
 
 do_save_t_test_tabs <- function(features, subtitle, suffix) {
@@ -1058,111 +1061,3 @@ features_match_has_same_defender_simple <-
     subtitle = 'After matching for targeted defender coverage', 
     suffix = 'adjusted_has_same_defender'
   )
-
-# non gtsummary offensive pick play t tests----
-# .f_agg_epa <- function(data) {
-#   
-#   data %>% 
-#     group_by(is_target_picked, is_pass_successful) %>% 
-#     summarize(across(c(epa), list(median = median, q25 = ~quantile(.x, 0.25), q75 = ~quantile(.x, 0.75)), .names = '{fn}')) %>% 
-#     ungroup() %>% 
-#     mutate(
-#       value = sprintf('%.02f (%.02f, %.02f)', median, q25, q75)
-#     )
-# }
-# 
-# .f_agg_n <- function(data) {
-#   
-#   data %>% 
-#     group_by(is_target_picked, is_pass_successful) %>% 
-#     summarize(n = n()) %>% 
-#     ungroup() %>% 
-#     group_by(is_target_picked) %>% 
-#     mutate(total = sum(n), frac = n / total) %>% 
-#     ungroup() %>% 
-#     mutate(
-#       # is_pass_successful = sprintf('%s (%s)', is_pass_successful, scales::comma(total)),
-#       value = sprintf('%s (%s)', scales::comma(n), scales::percent(frac, accuracy = 0.1))
-#     )
-# }
-# 
-# .f_pivot_agg <- function(data) {
-#   data %>% 
-#     select(is_target_picked, is_pass_successful, value) %>% 
-#     pivot_wider(names_from = is_target_picked, values_from = value) %>% 
-#     mutate(
-#       across(is_pass_successful, ~.x %>% str_replace_all('(.*)([YN]$)', '\\2'))
-#     )
-# }
-# 
-# .f_gt <- function(data, subtitle) {
-#   
-#   data %>% 
-#     rename(`Pass Successful?` = is_pass_successful) %>% 
-#     gt::gt() %>% 
-#     gt::tab_header(
-#       subtitle = subtitle,
-#       title = gt::md('EPA by pass outcome')
-#     ) %>% 
-#     gt::cols_label(
-#       # `t-test p-value` = gt::md('**t-test\np-value**'),
-#       `Target Picked? N` = gt::md('**Target Picked? N**'),
-#       `Target Picked? Y` = gt::md('**Target Picked? Y**')
-#     )
-# }
-# 
-# .f_save_gt <- function(gt, suffix, prefix = c('epa', 'n')) {
-#   prefix <- match.arg(prefix)
-#   gt %>% 
-#     gt::gtsave(filename = file.path(get_bdb_dir_figs(), sprintf('tab_%s%s.png', prefix, suffix)))
-# }
-# 
-# do_save_epa_tabs <- function(data, subtitle = NULL, suffix = NULL, sep = '_') {
-# 
-#   tab_epa <- 
-#     data %>% 
-#     .f_agg_epa() %>% 
-#     .f_pivot_agg()
-#   tab_epa
-#   
-#   .t_test_target <- function(cnd = c('Y', 'N')) {
-#     t.test(epa ~ is_target_picked, data = data %>% filter(is_pass_successful %>% str_detect(sprintf('%s$', cnd))))
-#   }
-# 
-#   t_target_y <- .t_test_target('Y')
-#   t_target_n <- .t_test_target('N')
-# 
-#   tab_epa['t-test p-value'] <- 
-#     c(t_target_n$p.value, t_target_y$p.value) %>% 
-#     sprintf('%0.03f', .)
-#   
-#   tab_n <- data %>% .f_agg_n() %>% .f_pivot_agg()
-#   
-#   if(is.null(suffix)) {
-#     suffix <- ''
-#   } else {
-#     suffix <- sprintf('%s%s', sep, suffix)
-#   }
-#   tab_epa %>% .f_gt(subtitle = subtitle) %>% .f_save_gt(suffix = suffix, prefix = 'epa')
-#   tab_n %>% .f_gt(subtitle = subtitle) %>% .f_save_gt(suffix = suffix, prefix = 'n')
-#   invisible()
-# }
-# 
-# features_simple %>%
-#   do_save_epa_tabs(suffix = 'unadjusted_nosubtitle')
-# 
-# features_simple %>% 
-#   do_save_epa_tabs(subtitle = 'Before matching', suffix = 'unadjusted')
-# 
-# features_match_is_target_picked_simple %>% 
-#   do_save_epa_tabs(
-#     subtitle = 'After matching for targeted pick plays', 
-#     suffix = 'adjusted_is_target_picked'
-#   )
-# 
-# features_match_has_same_defender_simple %>% 
-#   do_save_epa_tabs(
-#     subtitle = 'After matching for targeted defender coverage', 
-#     suffix = 'adjusted_has_same_defender'
-#   )
-
