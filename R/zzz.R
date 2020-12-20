@@ -1,4 +1,5 @@
 
+#' @seealso \url{https://r-pkgs.org/r.html?q=onLoad#when-you-do-need-side-effects}
 .onLoad <- function(libname, pkgname) {
   op <- options()
   op.bdb2021 <- list(
@@ -13,6 +14,7 @@
   invisible()
 }
 
+#' @seealso \url{https://github.com/hrbrmstr/hrbrthemes/blob/master/R/zzz.r}
 .onAttach <- function(libname, pkgname) {
   if (.Platform$OS.type == 'windows')  { # nocov start
     if (interactive()) packageStartupMessage('Registering Windows fonts with R')

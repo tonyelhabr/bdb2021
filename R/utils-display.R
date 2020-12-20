@@ -3,23 +3,6 @@
   getOption('bdb2021.verbose')
 }
 
-#' @seealso \url{https://glue.tidyverse.org/articles/transformers.html}
-.vv_transformer <- function(text, envir) {
-  regex <- '=$'
-  if (!grepl(regex, text)) {
-    return(glue::identity_transformer(text, envir))
-  }
-
-  text <- sub(regex, '', text)
-  res <- glue::identity_transformer(text, envir)
-  n <- length(res)
-  res <- glue::glue_collapse(res, sep = ', ')
-  if (n > 1) {
-    res <- c('[', res, ']')
-  }
-  glue::glue_collapse(cli::bg_cyan(glue::glue('`{text}` = "{res}"')))
-}
-
 .display_info <- function(x, ..., .envir = parent.frame(), .verbose = .get_verbose(), .f_glue = glue::glue_collapse) {
   if (!.verbose) {
     return(invisible(x))
@@ -29,15 +12,17 @@
   cli::cat_line(x)
 }
 
-.display_info_var <- purrr::partial(.display_info, .f_glue = .vv_transformer, ... = )
-
-# NOTE: Ignore `verbose` for these.
 .display_warning <- function(x, ..., .envir = parent.frame()) {
-  usethis::ui_warn(x, .envir = .envir)
+  x <- glue::glue_collapse(x, '\n')
+  x <- glue::glue(x, .envir = .envir)
+  warning(x, call. = FALSE, immediate. = TRUE)
 }
 
 .display_error <- function(x, ..., .envir = parent.frame()) {
-  usethis::ui_stop(x, .envir = .envir)
+  x <- glue::glue_collapse(x, '\n')
+  x <- glue::glue(x, .envir = .envir)
+  cnd <- structure(class = c('usethis_error', 'error', 'condition'), list(message = x))
+  stop(cnd)
 }
 
 .time_it <- function(f, ..., .name = NULL, .verbose = .get_verbose()) {

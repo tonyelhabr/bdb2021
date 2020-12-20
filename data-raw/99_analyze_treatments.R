@@ -916,7 +916,20 @@ defenders_intersect_adj_top_epa
       show.legend = FALSE,
       family = 'Karla',
       color = 'forestgreen'
-    )
+    ),
+    guides(
+      size = guide_legend(title = '# of total plays', override.aes = list(alpha = 1))
+    ),
+    theme(
+      plot.caption = element_text(size = 12),
+      legend.position = 'top'
+    ),
+    labs(
+      title = 'Aggreggate EPA when covering targeted receiver',
+      caption = 'Minimum of 10 pick plays covered.',
+      x = 'EPA on non-pick plays',
+      y = 'EPA on pick plays'
+    ) 
   )
 }
 
@@ -935,20 +948,6 @@ viz_defenders_intersect_adj <-
   ) +
   geom_text(
     aes(x = 5.1, y = 36, label = 'Worst on non-pick plays'), color = 'forestgreen', size = pts(14), hjust = 0
-  ) +
-  guides(
-    size = guide_legend(title = '# of total plays', override.aes = list(alpha = 1))
-  ) +
-  # coord_equal(xlim = c(-30, 30)) +
-  theme(
-    plot.caption = element_text(size = 10),
-    legend.position = 'top'
-  ) +
-  labs(
-    title = 'Aggreggate EPA when covering targeted receiver',
-    caption = 'Minimum of 10 pick plays covered.\nPlot does not differentiate based on type of coverage (e.g. man). Defender at time of thow is used.',
-    y = 'EPA on non-pick plays',
-    x = 'EPA on pick plays'
   )
 viz_defenders_intersect_adj
 save_plot(viz_defenders_intersect_adj)
@@ -981,19 +980,8 @@ viz_defenders_intersect_adj_by_coverage <-
   defenders_intersect_adj_by_coverage %>% 
   ggplot() +
   .common_defenders_intersect_adj_layers(.data = defenders_intersect_adj_by_coverage) +
-  guides(
-    size = guide_legend(title = '# of total plays', override.aes = list(alpha = 1))
-  ) +
-  theme(
-    plot.caption = element_text(size = 12),
-    legend.position = 'top'
-  ) +
   labs(
-    title = 'Aggreggate EPA when covering targeted receiver',
-    subtitle = 'Differntiated by coverage type',
-    caption = 'Minimum of 10 pick plays covered.',
-    y = 'EPA on non-pick plays',
-    x = 'EPA on pick plays'
+    subtitle = 'Differntiated by coverage type'
   ) +
   facet_wrap(~has_same_defender)
 viz_defenders_intersect_adj_by_coverage

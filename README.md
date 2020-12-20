@@ -2,9 +2,10 @@
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 All code is available in [this GitHub
-repo](https://github.com/tonyelhabr/bdb2021). Basically everything in
-this notebook is in [this
+repo](https://github.com/tonyelhabr/bdb2021). One can
+`remotes::install_packages('tonyelhabr/bdb2021')` and run [this
 script](https://github.com/tonyelhabr/bdb2021/blob/master/data-raw/99_analyze_treatments.R)
+to reproduce all figures.
 
 # 0. Introduction
 
