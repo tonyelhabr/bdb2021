@@ -20,7 +20,7 @@
 .get_from_rgx <-
   function(data, rgx = NULL) {
     if(!is.null(rgx)) {
-      x <- data %>% names() %>% str_subset(rgx)
+      x <- data %>% names() %>% stringr::str_subset(rgx)
     }
     unique(x)
   }
@@ -81,5 +81,5 @@ generate_formula <-
     vars_x <- paste0(vars_x, suffix)
 
     formula_chr <- paste0(y, ' ~ ', vars_x)
-    as.formula(formula_chr)
+    stats::as.formula(formula_chr)
   }

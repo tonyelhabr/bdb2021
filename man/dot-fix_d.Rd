@@ -6,6 +6,11 @@
 \usage{
 .fix_d(o, d, rushers)
 }
+\arguments{
+\item{o, d}{Offense and defense matrices}
+
+\item{rushers}{matrix for rushers}
+}
 \description{
 Ignore rushers on defensive side of ball (in \code{d}) in min distance calculation.
 }

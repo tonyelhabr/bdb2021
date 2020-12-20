@@ -12,7 +12,7 @@
 #' }
 #' @export
 identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
-  nfl_ids <- data %>% dplyr::distinct(nfl_id) %>% dplyr::pull(nfl_id)
+  nfl_ids <- data %>% dplyr::distinct(.data$nfl_id) %>% dplyr::pull(.data$nfl_id)
   if(length(nfl_ids) <= 1L) {
     return(tibble::tibble())
   }
@@ -38,18 +38,12 @@ identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
       line =
         purrr::map(
           data,
-          ~dplyr::select(.x, x, y) %>%
+          ~dplyr::select(.x, .data$x, .data$y) %>%
             as.matrix() %>%
             sf::st_linestring()
         )
     ) %>%
-    dplyr::select(nfl_id, line)
-
-  line1 <- data_trans %>% slice(2) %>% pull(line) %>% pluck(1)
-  line2 <- data_trans %>% slice(3) %>% pull(line) %>% pluck(1)
-  sf::st_intersects(line1, line2) %>% as.integer()
-  sf::st_intersection(line1, line2) %>% as.numeric()
-  sf::st_join(line1, line2)
+    dplyr::select(.data$nfl_id, .data$line)
 
   res <-
     tidyr::crossing(
@@ -66,7 +60,7 @@ identify_intersection <- function(data, pad_backwards = TRUE, pad_x = 1) {
     dplyr::mutate(
       intersection =
         purrr::map2_int(
-          line, line_intersect,
+          .data$line, .data$line_intersect,
           ~sf::st_intersects(..1, ..2) %>%
             as.integer()
         ),

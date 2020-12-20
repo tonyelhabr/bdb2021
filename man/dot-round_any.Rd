@@ -6,6 +6,13 @@
 \usage{
 .round_any(x, accuracy, f = round)
 }
+\arguments{
+\item{x}{value.}
+
+\item{accuracy}{digits}
+
+\item{f}{function to use for rounding}
+}
 \description{
 Round to multiple of any number.
 }

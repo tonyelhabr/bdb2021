@@ -9,8 +9,3 @@ import_plays(drop_bad = TRUE)
 \description{
 Import plays data
 }
-\examples{
-\dontrun{
-import_plays()
-}
-}

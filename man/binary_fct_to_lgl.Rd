@@ -6,6 +6,9 @@
 \usage{
 binary_fct_to_lgl(x)
 }
+\arguments{
+\item{x}{factor}
+}
 \description{
 Convert numerics to logicals, mostly for modeling purposes.
 }

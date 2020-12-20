@@ -10,6 +10,9 @@ pts <- function(x) {
 #' Basically like \code{\link[plyr]{round_any}}
 #'
 #' @description Round to multiple of any number.
+#' @param x value.
+#' @param accuracy digits
+#' @param f function to use for rounding
 #' @seealso \url{http://search.r-project.org/library/plyr/html/round_any.html}
 .round_any <- function(x, accuracy, f = round) {
   f(x / accuracy) * accuracy

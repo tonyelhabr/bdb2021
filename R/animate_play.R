@@ -4,6 +4,8 @@
 #' Ignore rushers on defensive side of ball (in `d`) in min distance calculation.
 #' 
 #' @details This should only be used if you know what you're doing.
+#' @param o,d Offense and defense matrices
+#' @param rushers matrix for rushers
 #' @export
 .fix_d <- function(o, d, rushers) {
   
@@ -36,6 +38,8 @@
 #' Filter to one side of the ball (offense or defense).
 #' 
 #' @details This should only be used if you know what you're doing.
+#' @param data data.frame with `side` column that is either `"O"` or `"D"`
+#' @param side Either `"o"` or `"d"`. (It's converted to upper in the function.)
 #' @export
 .filter_side <- function(data, side = c('o', 'd')) {
   side <- match.arg(side)
@@ -46,26 +50,28 @@
 
 #' Save animation
 #' 
-#' Save animation
-#' 
-#' @param anim animation object
+#' @param object Plot/animation to save
+#' @inheritParams animate_play
+#' @param end_pause Number of frames to pause at the end. Measured in frames, not seconds!
+#' @param renderer Renderer. See `{gganimate}`'s options.
+#' @param ... Passed to `gganimate::animate()`.
 #' @export
 save_animation <-
-  function(anim,
+  function(object,
            height = 600,
            width = width,
            fps = 10,
            end_pause = fps,
-           file = deparse(substitute(anim)),
-           ext = 'gif',
            dir = get_bdb_dir_figs(),
+           file = deparse(substitute(object)),
+           ext = 'gif',
            path = file.path(dir, sprintf('%s.%s', file, ext)),
            renderer = gganimate::gifski_renderer(path),
            ...) {
 
     res <-
       gganimate::animate(
-        anim,
+        object,
         fps = fps,
         height = height,
         width = width,
@@ -75,15 +81,28 @@ save_animation <-
       )
   }
 
-#' Plot a play
+#' Animate a play
 #'
-#' @description Plot a play
-#' @param game_id `game_id`
-#' @param play_id `play_id`
-#' @examples
-#' \dontrun{
-#' plot_play()
-#' }
+#' @param game_id Game id (number).
+#' @param play_id Play id (number).
+#' @param plays,games,positions Provided data sets that will be imported.
+#' via `import_*()` functions if not explicitly provided
+#' @param week If not explicitly provided, looked up by filtering to `game_id` and `play_id`. If explicitly provided and it doesn't correspond to `game_id` and `play_id`, chaos will ensue.
+#' @inheritParams gg_field
+#' @param team_colors Whether to use team colors or not. If not, uses red and blue.
+#' @param colors Data set to use for colors
+#' @param buffer Space to add to sidelines. Unit is yards.
+#' @param nearest_defender Whether to add nearest defender lines.
+#' @param clip Whether to clip tracking data at a certain point. See `clip_tracking_at_events()`.
+#' @inheritParams clip_tracking_at_events
+#' @param save Whether to save animation
+#' @param dir,file,ext Directory, file name (without extension), and extension used to generate `path` if `path` is not explicitly provided.
+#' @param path Path where to save plot/animation.
+#' @param subtitle Subtitle to add to plot/animation.
+#' @param end_pause How many seconds after full play to delay.
+#' @param height,width Height and width of the animation in pixels, not inches!
+#' @param fps Frames per second.
+#' @param ... Parameters passed to `save_animation()`.
 #' @export
 animate_play <-
   function(game_id = 2018090600,
@@ -94,6 +113,7 @@ animate_play <-
            week = NULL,
            tracking = NULL,
            team_colors = FALSE,
+           colors = import_colors(),
            yardmin = NULL,
            yardmax = NULL,
            field_color = '#b3e3d6',
@@ -107,9 +127,9 @@ animate_play <-
            init_cnd = dplyr::quos(.data$frame_id == 1L),
            save = TRUE,
            dir = get_bdb_dir_figs(),
+           file = sprintf('%s-%s.%s', game_id, play_id, ext),
            ext = 'gif',
-           filename = sprintf('%s-%s.%s', game_id, play_id, ext),
-           path = file.path(dir, filename),
+           path = file.path(dir, file),
            subtitle = NULL,
            # width = 10,
            # height = 10,
@@ -145,7 +165,7 @@ animate_play <-
     play <- plays %>% dplyr::inner_join(meta, by = c('game_id', 'play_id'))
     assertthat::assert_that(nrow(play) == 1L)
     
-    game <- games %>% dplyr::filter(game_id == !!game_id)
+    game <- games %>% dplyr::filter(.data$game_id == !!game_id)
     assertthat::assert_that(nrow(game) == 1L)
     
     target_id <- play$target_nfl_id
@@ -158,15 +178,15 @@ animate_play <-
     } else {
       target <-
         tracking %>%
-        dplyr::filter(nfl_id == !!target_id) %>%
-        dplyr::distinct(display_name, jersey_number)
+        dplyr::filter(.data$nfl_id == !!target_id) %>%
+        dplyr::distinct(.data$display_name, .data$jersey_number)
       assertthat::assert_that(nrow(target) == 1L)
     }
 
     tracking_clipped <-
       tracking %>%
       clip_tracking_at_events(at = 'throw', init_cnd = dplyr::quos(.data$frame_id == 1L)) %>%
-      dplyr::arrange(game_id, play_id, nfl_id, frame_id)
+      dplyr::arrange(.data$game_id, .data$play_id, .data$nfl_id, .data$frame_id)
     
     if(nearest_defender) {
       personnel_and_rushers <- bdb2021::personnel_and_rushers
@@ -254,29 +274,29 @@ animate_play <-
     
     target_tracking <-
       tracking %>%
-      dplyr::filter(nfl_id == !!target_id)
+      dplyr::filter(.data$nfl_id == !!target_id)
     
     nontarget_tracking <-
       tracking %>%
-      dplyr::filter(nfl_id != !!target_id)
+      dplyr::filter(.data$nfl_id != !!target_id)
     
     target_tracking_clipped <-
       tracking_clipped %>%
-      dplyr::filter(nfl_id == !!target_id)
+      dplyr::filter(.data$nfl_id == !!target_id)
     
     nontarget_tracking_clipped <-
       tracking_clipped %>%
-      dplyr::filter(nfl_id != !!target_id)
+      dplyr::filter(.data$nfl_id != !!target_id)
     
     ball <-
       tracking %>%
-      dplyr::distinct(game_id, play_id, frame_id, x = ball_x, y = ball_y) %>%
+      dplyr::distinct(.data$game_id, .data$play_id, .data$frame_id, x = .data$ball_x, y = .data$ball_y) %>%
       dplyr::mutate(nfl_id = NA_integer_)
     
     if(is.null(yardmin) | is.null(yardmax)) {
       yardminmax <-
         tracking %>%
-        dplyr::summarize(dplyr::across(x, list(min = min, max = max)))
+        dplyr::summarize(dplyr::across(.data$x, list(min = min, max = max)))
       
       if(is.null(yardmin)) {
         yardmin <- yardminmax$x_min
@@ -293,7 +313,7 @@ animate_play <-
     if(is.null(buffer)) {
       yminmax <-
         tracking %>%
-        dplyr::summarize(dplyr::across(y, list(min = min, max = max)))
+        dplyr::summarize(dplyr::across(.data$y, list(min = min, max = max)))
       ymin <- yminmax$y_min
       ymin <- .round_any(ymin, 1, floor)
       ymax <- yminmax$y_max
@@ -310,9 +330,9 @@ animate_play <-
     away_team <- game$visitor_team_abbr
     
     if(team_colors) {
-      colors <- import_colors()
-      home_color <- colors %>% dplyr::filter(team == home_team) %>% dplyr::pull(color)
-      away_color <- colors %>% dplyr::filter(team == away_team) %>% dplyr::pull(color)
+
+      home_color <- colors %>% dplyr::filter(.data$team == !!home_team) %>% dplyr::pull(.data$color)
+      away_color <- colors %>% dplyr::filter(.data$team == !!away_team) %>% dplyr::pull(.data$color)
       if(play$possession_team == home_team) {
         offense_color <- home_color
         defense_color <- away_color
@@ -352,17 +372,17 @@ animate_play <-
         sideline_color = sideline_color # ,
         # ...
       ) +
-      ggplot2::aes(x = x, y = y) +
+      ggplot2::aes(x = .data$x, y = .data$y) +
       ggplot2::geom_segment(
         data = tibble::tibble(x = !!line_of_scrimmage),
         inherit.aes = FALSE,
-        ggplot2::aes(x = x, y = 0, xend = x, yend = !!max_y),
+        ggplot2::aes(x = .data$x, y = 0, xend = .data$x, yend = !!max_y),
         size = 1.25
       ) +
       ggplot2::geom_segment(
         data = tibble::tibble(x = !!first_down_line),
         inherit.aes = FALSE,
-        ggplot2::aes(x = x, y = 0, xend = x, yend = !!max_y),
+        ggplot2::aes(x = .data$x, y = 0, xend = .data$x, yend = !!max_y),
         color = '#ffff7f',
         size = 2
       ) +
@@ -374,14 +394,14 @@ animate_play <-
       ) +
       ggplot2::geom_path(
         data = nontarget_tracking_clipped %>% dplyr::select(-.data$frame_id),
-        ggplot2::aes(color = side, group = nfl_id),
+        ggplot2::aes(color = .data$side, group = .data$nfl_id),
         size = 1,
         alpha = 0.3,
         show.legend = FALSE
       ) +
       ggplot2::geom_path(
         data = nontarget_tracking_between %>% dplyr::select(-.data$frame_id),
-        ggplot2::aes(color = side, group = nfl_id),
+        ggplot2::aes(color = .data$side, group = .data$nfl_id),
         size = 1,
         alpha = 0.3,
         linetype = 2,
@@ -389,7 +409,7 @@ animate_play <-
       ) +
       ggplot2::geom_text(
         data = nontarget_tracking,
-        ggplot2::aes(label = jersey_number, color = side),
+        ggplot2::aes(label = .data$jersey_number, color = .data$side),
         show.legend = FALSE,
         fontface = 'bold',
         size = pts(14)
@@ -409,14 +429,14 @@ animate_play <-
         p +
         ggplot2::geom_path(
           data = target_tracking_clipped %>% dplyr::select(-.data$frame_id),
-          ggplot2::aes(color = side),
+          ggplot2::aes(color = .data$side),
           size = 2,
           alpha = 0.3,
           show.legend = FALSE
         ) +
         ggplot2::geom_path(
           data = target_tracking_between %>% dplyr::select(-.data$frame_id),
-          ggplot2::aes(color = side),
+          ggplot2::aes(color = .data$side),
           size = 2,
           alpha = 0.3,
           linetype = 2,
@@ -424,7 +444,7 @@ animate_play <-
         ) +
         ggplot2::geom_text(
           data = target_tracking,
-          ggplot2::aes(label = jersey_number, color = side),
+          ggplot2::aes(label = .data$jersey_number, color = .data$side),
           show.legend = FALSE,
           fontface = 'bold',
           size = pts(14)
@@ -437,7 +457,7 @@ animate_play <-
         ggplot2::geom_segment(
           data = min_dists_robust,
           inherit.aes = FALSE,
-          ggplot2::aes(x = x_o, y = y_o, xend = x_d, yend = y_d),
+          ggplot2::aes(x = .data$x_o, y = .data$y_o, xend = .data$x_d, yend = .data$y_d),
           color = 'black'
         )
     }
@@ -471,7 +491,7 @@ animate_play <-
                              game_id = {game$game_id}, play_id = {play$play_id}'),
         x = NULL, y = NULL
       )
-    anim <- p + gganimate::transition_manual(frame_id)
+    anim <- p + gganimate::transition_manual(.data$frame_id)
     
     if(!save) {
       return(anim)

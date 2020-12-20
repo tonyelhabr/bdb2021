@@ -2,7 +2,7 @@
 % Please edit documentation in R/animate_play.R
 \name{animate_play}
 \alias{animate_play}
-\title{Plot a play}
+\title{Animate a play}
 \usage{
 animate_play(
   game_id = 2018090600,
@@ -13,6 +13,7 @@ animate_play(
   week = NULL,
   tracking = NULL,
   team_colors = FALSE,
+  colors = import_colors(),
   yardmin = NULL,
   yardmax = NULL,
   field_color = "#b3e3d6",
@@ -26,9 +27,9 @@ animate_play(
   init_cnd = dplyr::quos(.data$frame_id == 1L),
   save = TRUE,
   dir = get_bdb_dir_figs(),
+  file = sprintf("\%s-\%s.\%s", game_id, play_id, ext),
   ext = "gif",
-  filename = sprintf("\%s-\%s.\%s", game_id, play_id, ext),
-  path = file.path(dir, filename),
+  path = file.path(dir, file),
   subtitle = NULL,
   end_pause = 1,
   height = 600,
@@ -38,15 +39,59 @@ animate_play(
 )
 }
 \arguments{
-\item{game_id}{\code{game_id}}
+\item{game_id}{Game id (number).}
 
-\item{play_id}{\code{play_id}}
+\item{play_id}{Play id (number).}
+
+\item{plays, games, positions}{Provided data sets that will be imported.
+via \verb{import_*()} functions if not explicitly provided}
+
+\item{week}{If not explicitly provided, looked up by filtering to \code{game_id} and \code{play_id}. If explicitly provided and it doesn't correspond to \code{game_id} and \code{play_id}, chaos will ensue.}
+
+\item{tracking}{Tracking data frame}
+
+\item{team_colors}{Whether to use team colors or not. If not, uses red and blue.}
+
+\item{colors}{Data set to use for colors}
+
+\item{yardmin}{numbers}
+
+\item{yardmax}{numbers}
+
+\item{field_color}{color}
+
+\item{line_color}{color}
+
+\item{sideline_color}{color}
+
+\item{endzone_color}{color}
+
+\item{buffer}{Space to add to sidelines. Unit is yards.}
+
+\item{nearest_defender}{Whether to add nearest defender lines.}
+
+\item{clip}{Whether to clip tracking data at a certain point. See \code{clip_tracking_at_events()}.}
+
+\item{at}{character vector indicating which \code{event} at which to clip each play}
+
+\item{init_cnd}{a quosure for a filtering condition used to start the clip. This is ball snap by default. Only change this if you know what you're doing.}
+
+\item{save}{Whether to save animation}
+
+\item{dir, file, ext}{Directory, file name (without extension), and extension used to generate \code{path} if \code{path} is not explicitly provided.}
+
+\item{path}{Path where to save plot/animation.}
+
+\item{subtitle}{Subtitle to add to plot/animation.}
+
+\item{end_pause}{How many seconds after full play to delay.}
+
+\item{height, width}{Height and width of the animation in pixels, not inches!}
+
+\item{fps}{Frames per second.}
+
+\item{...}{Parameters passed to \code{save_animation()}.}
 }
 \description{
-Plot a play
-}
-\examples{
-\dontrun{
-plot_play()
-}
+Animate a play
 }

@@ -6,6 +6,9 @@
 \usage{
 binary_fct_to_int(x)
 }
+\arguments{
+\item{x}{factor}
+}
 \description{
 Convert factor to integer
 }

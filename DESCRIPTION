@@ -1,5 +1,5 @@
 Package: bdb2021
-Title: R package for bdb.
+Title: R package for bdb
 Version: 0.0.0.9000
 Authors@R: 
     person(given = "Tony",
@@ -11,10 +11,12 @@ License: MIT + file LICENSE
 Depends: 
     R (>= 3.5)
 Imports: 
+    arrow,
     assertthat,
     cli,
     clue,
     dplyr,
+    extrafont,
     fields,
     gganimate,
     ggplot2,
@@ -26,11 +28,14 @@ Imports:
     purrr,
     readr,
     rlang (>= 0.1.2),
+    scales,
     sf,
     stringr,
+    tibble,
     tidyr,
     usethis,
-    vroom
+    vroom,
+    xgboost
 Suggests: 
     knitr,
     rmarkdown,

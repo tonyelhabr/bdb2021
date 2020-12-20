@@ -3,3 +3,4 @@
 ^data-raw$
 ^inst$
 ^README\.Rmd$
+^LICENSE\.md$

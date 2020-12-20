@@ -10,6 +10,8 @@ get_intersection_cutoff <- memoise::memoise({function() {
 #' Binary 1 and 0 to TRUE and FALSE
 #'
 #' Convert numerics to logicals, mostly for modeling purposes.
+#' 
+#' @param x factor
 #' @export
 binary_fct_to_lgl <- function(x) {
   x %>% as.integer() %>% {. - 1L} %>% as.logical()
@@ -17,7 +19,7 @@ binary_fct_to_lgl <- function(x) {
 
 #' Convert factor to integer
 #'
-#' Convert factor to integer
+#' @param x factor
 #' @export
 binary_fct_to_int <- function(x) {
   x %>% as.integer() %>% {. - 1L}

@@ -6,6 +6,11 @@
 \usage{
 .filter_side(data, side = c("o", "d"))
 }
+\arguments{
+\item{data}{data.frame with \code{side} column that is either \code{"O"} or \code{"D"}}
+
+\item{side}{Either \code{"o"} or \code{"d"}. (It's converted to upper in the function.)}
+}
 \description{
 Filter to one side of the ball (offense or defense).
 }

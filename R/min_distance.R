@@ -16,7 +16,7 @@
 .coerce_to_mat <- function(data) {
   res <-
     data %>%
-    dplyr::select(x, y) %>%
+    dplyr::select(.data$x, .data$y) %>%
     as.matrix()
   rownames(res) <- data$nfl_id
   res
@@ -77,7 +77,7 @@ compute_min_distances <- function(o, d, one_pass = TRUE) {
   dists_tidy <-
     dists %>%
     tibble::as_tibble(rownames = 'nfl_id_o') %>%
-    tidyr::pivot_longer(-c(nfl_id_o), names_to = 'nfl_id_d', values_to = 'dist') %>%
+    tidyr::pivot_longer(-c(.data$nfl_id_o), names_to = 'nfl_id_d', values_to = 'dist') %>%
     dplyr::mutate(dplyr::across(dplyr::starts_with('nfl_id'), as.integer)) %>%
     dplyr::inner_join(o %>% dplyr::rename_all(~sprintf('%s_o', .x)), by = 'nfl_id_o') %>%
     dplyr::inner_join(d %>% dplyr::rename_all(~sprintf('%s_d', .x)), by = 'nfl_id_d')

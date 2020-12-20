@@ -10,7 +10,9 @@ prep_do_by_week <- function(week = 1L, n_halfseconds = 7L, at = 'throw', ..., .m
 
   snap_frames <- tracking %>% dplyr::filter(.data$event == 'ball_snap')
 
-  snap_frame_ids <- snap_frames %>% dplyr::distinct(game_id, play_id, frame_id)
+  snap_frame_ids <- 
+    snap_frames %>% 
+    dplyr::distinct(.data$game_id, .data$play_id, .data$frame_id)
 
   frames <-
     snap_frame_ids %>%

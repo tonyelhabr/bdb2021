@@ -130,8 +130,8 @@ import_tracking <- function(week = 1, positions = import_positions(), standardiz
       by = 'position'
     )
 
-  ball <- tracking %>% dplyr::filter(display_name == 'Football')
-  tracking <- tracking %>% dplyr::filter(display_name != 'Football')
+  ball <- tracking %>% dplyr::filter(.data$display_name == 'Football')
+  tracking <- tracking %>% dplyr::filter(.data$display_name != 'Football')
 
   tracking <-
     tracking %>%
@@ -245,10 +245,7 @@ import_players <- memoise::memoise({function() {
 #' Import plays data
 #'
 #' @inheritParams import_positions
-#' @examples
-#' \dontrun{
-#' import_plays()
-#' }
+#' @param drop_bad Whether to drop bad plays
 #' @export
 import_plays <- memoise::memoise({function(drop_bad = TRUE) {
   path <- file.path(get_bdb_dir_in(), 'plays.csv')
