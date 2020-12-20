@@ -1,20 +1,21 @@
 
 library(tidyverse)
-# data('pick_play_ids_adj', package = 'bdb2021')
 library(bdb2021)
-theme_set_and_update_bdb()
+data('plays_w_pick_info', package = 'bdb2021')
 
-.path_data <- partial(file.path, get_bdb_dir_data(), ... = )
-.path_figs <- partial(file.path, get_bdb_dir_figs(), ... = )
-features <- .path_data('plays_w_pick_info_features.parquet') %>% arrow::read_parquet()
-path_model_data <- .path_data('nflfastr_model_data_2018.parquet')
-path_ep_model_nflfastr <- .path_data('ep_model_nflfastr')
-path_ep_model_bdb <- .path_data('ep_model_bdb')
-path_epa_model_bdb <- .path_data('epa_model_bdb')
+plays <- import_plays()
+pbp <- import_nflfastr_pbp()
+path_model_data <- file.path(get_bdb_dir_data(), 'nflfastr_model_data_2018.parquet')
+path_epa_model_bdb <- file.path('inst', 'epa_model_bdb')
 
-if(!file.exists(path_model_data)) {
+# Reference https://github.com/guga31bb/nflfastR-data/blob/master/models/model_data.R#L1}
+retrieve_nflfastr_model_data <- function(overwrite = FALSE) {
+  if(!file.exists(path_model_data) & !overwrite) {
+    .display_info('Returning early.')
+    model_data <- path_model_data %>% arrow::read_parquet()
+    return(model_data)
+  }
   
-  #' @seealso \url{https://github.com/guga31bb/nflfastR-data/blob/master/models/model_data.R#L1}
   find_game_next_score_half <- function(pbp_dataset) {
     
     # Which rows are the scoring plays:
@@ -238,10 +239,7 @@ if(!file.exists(path_model_data)) {
     mutate(
       across(c(game_id, play_id), as.integer)
     )
-  
-  plays <- import_plays()
-  pbp <- import_nflfastr_pbp()
-  
+
   model_data <- 
     pbp_data %>%
     nflfastR:::make_model_mutations() %>%
@@ -314,24 +312,8 @@ if(!file.exists(path_model_data)) {
     filter(row_number() == 1L) %>%
     ungroup()
   arrow::write_parquet(model_data, path_model_data)
-} else {
-  model_data <- path_model_data %>% arrow::read_parquet()
+  model_data
 }
-
-nrounds <- 525
-params <-
-  list(
-    booster = 'gbtree',
-    objective = 'multi:softprob',
-    eval_metric = c('mlogloss'),
-    num_class = 7,
-    eta = 0.025,
-    gamma = 1,
-    subsample = 0.8,
-    colsample_bytree = 0.8,
-    max_depth = 5,
-    min_child_weight = 1
-  )
 
 .ep_model_select <- function(pbp, ...) {
   pbp %>% 
@@ -353,42 +335,6 @@ params <-
     )
 }
 
-if(!file.exists(path_ep_model_nflfastr)) {
-  
-  model_mat <- 
-    model.matrix(
-      ~.+0, 
-      data = 
-        model_data %>% 
-        .ep_model_select()
-    )
-  model_mat
-  
-  full_train <-
-    xgboost::xgb.DMatrix(
-      model_mat,
-      label = model_data$label,
-      weight = model_data$Total_W_Scaled
-    )
-  
-  ep_model <- 
-    xgboost::xgboost(
-      params = params, 
-      data = full_train, 
-      nrounds = nrounds, 
-      verbose = 2
-    )
-  
-  xgboost::xgb.save(ep_model, path_ep_model_nflfastr)
-} else {
-  ep_model <- xgboost::xgb.load(path_ep_model_nflfastr)
-}
-
-# bdb ep ----
-.binary_factor_to_int <- function(x) {
-  x %>% as.integer() %>% {. - 1L}
-}
-
 .cols_control <- c('x', 'y', 'x_o', 'dist_o', 'x_d', 'dist_d')
 # These are actually the dummy variables, so can't use these directly with the select below.
 .cols_trt <- 
@@ -397,10 +343,10 @@ if(!file.exists(path_ep_model_nflfastr)) {
     sprintf('has_same_defender%d', 0:1)
   )
 
-model_data_bdb <-
+model_data_nflfastr <-
   model_data %>% 
   inner_join(
-    features %>%
+    plays_w_pick_info %>%
       select(
         game_id,
         play_id,
@@ -423,7 +369,7 @@ model_data_bdb <-
       is_target_picked, has_same_defender
     ) %>% 
     mutate(
-      across(c(is_target_picked, has_same_defender), .binary_factor_to_int),
+      across(c(is_target_picked, has_same_defender), binary_fct_to_int),
       is_target_picked1 = if_else(is_target_picked == 1, 1, 0), 
       is_target_picked0 = if_else(is_target_picked == 0, 1, 0),
       has_same_defender1 = if_else(has_same_defender == 1, 1, 0), 
@@ -432,187 +378,24 @@ model_data_bdb <-
     select(-c(is_target_picked, has_same_defender))
 }
 
-model_mat_bdb <- 
+model_mat_nflfastr <- 
   model.matrix(
     ~.+0, 
-    data = model_data_bdb %>% .bdb_model_select()
+    data = model_data_nflfastr %>% .bdb_model_select()
   )
-model_mat_bdb
+model_mat_nflfastr
+usethis::use_data(model_mat_nflfastr, overwrite = TRUE)
 
-if(!file.exists(path_ep_model_bdb)) {
-  full_train_bdb_ep <-
-    xgboost::xgb.DMatrix(
-      model_mat_bdb,
-      label = model_data_bdb$label,
-      weight = model_data_bdb$Total_W_Scaled
-    )
-  
-  ep_model_bdb <- 
-    xgboost::xgboost(
-      params = params, 
-      data = full_train_bdb_ep, 
-      nrounds = nrounds, 
-      verbose = 2
-    )
-  xgboost::xgb.save(ep_model_bdb, path_ep_model_bdb)
-} else {
-  ep_model_bdb <- xgboost::xgb.load(path_ep_model_bdb)
-}
-
-# Reference: https://bradleyboehmke.github.io/HOML/iml.html#xgboost-and-built-in-shapley-values
-do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = '{nflfastR} EP model with added features', subtitle = NULL) {
-  # mat <- model_mat_bdb
-  # fit <- epa_model_bdb
-  
-  if(is.null(suffix)) {
-    suffix <- ''
-  } else {
-    suffix <- sprintf('%s%s', sep, suffix)
-  }
-  
-  feature_values_init <-
-    mat %>%
-    as.data.frame() %>%
-    mutate_all(scale) %>%
-    # pivot_longer(matches('.*'), names_to = 'feature', values_to = 'feature_value') %>% 
-    # set_names(c('feature', 'feature_value')) %>% 
-    tidyr::gather('feature', 'feature_value') %>% 
-    as_tibble()
-  feature_values_init
-  
-  feature_values <-
-    feature_values_init %>% 
-    pull(feature_value)
-  feature_values
-  
-  shap_init <-
-    fit %>% 
-    predict(newdata = mat, predcontrib = TRUE) %>%
-    as.data.frame() %>%
-    as_tibble() %>% 
-    select(-matches('BIAS'))
-  shap_init
-  
-  # First condition is for EP model (7 outcomes).
-  if(any(str_detect(names(shap_init), '[.]6$'))) {
-    shap <-
-      shap_init %>% 
-      mutate(idx = row_number()) %>% 
-      pivot_longer(-idx, names_to = 'feature', values_to = 'shap_value') %>%
-      separate(feature, into = c('feature', 'feature_idx'), sep = '[.]') %>% 
-      mutate(across(feature_idx, ~coalesce(.x, '0') %>% as.integer() %>% {. + 1L})) %>% 
-      group_by(idx, feature) %>% 
-      summarize(
-        across(shap_value, sum)
-      ) %>% 
-      ungroup()
-  } else {
-    shap <- 
-      shap_init %>% 
-      mutate(idx = row_number()) %>% 
-      pivot_longer(-idx, names_to = 'feature', values_to = 'shap_value')
-  }
-
-
-  shap_agg_by_feature <-
-    shap %>% 
-    group_by(feature) %>% 
-    summarize(
-      across(shap_value, ~mean(abs(.x))),
-    ) %>% 
-    ungroup() %>% 
-    mutate(
-      across(shap_value, list(rnk = ~row_number(desc(.x))))
-    ) %>% 
-    arrange(shap_value_rnk)
-  shap_agg_by_feature
-  
-  set.seed(42)
-  shap_sample <- shap %>% group_by(feature) %>% sample_frac(0.1) %>% ungroup()
-  
-  .prep_viz_data <- function(data) {
-    data %>% 
-      mutate(
-        color = 
-          case_when(
-            feature %in% .cols_trt ~ '#000000', #  gplots::col2hex('cornflowerblue'), #  gplots::col2hex('#0000ff'), 
-            TRUE ~ gplots::col2hex('grey30')
-          ),
-        tag = 
-          case_when(
-            feature %in% .cols_trt ~ 'b',
-            TRUE ~ 'span'
-          ),
-        lab = glue::glue('<{tag} style="color:{color}">{feature}</{tag}>'),
-        across(lab, ~fct_reorder(.x, -shap_value_rnk))
-      )
-  }
-  
-  viz_shap_swarm <- 
-    shap_sample %>% 
-    left_join(shap_agg_by_feature %>% select(feature, shap_value_rnk)) %>% 
-    .prep_viz_data() %>% 
-    ggplot() +
-    aes(x = shap_value, y = lab) +
-    ggbeeswarm::geom_quasirandom(
-      groupOnX = FALSE, 
-      varwidth = TRUE, 
-      color = '#4D4D4D',
-      size = 0.2, 
-      alpha = 0.3
-    ) +
-    theme(
-      axis.text.y = ggtext::element_markdown()
-    ) +
-    labs(
-      title = title,
-      subtitle = subtitle,
-      x = 'SHAP value',
-      y = NULL
-    )
-
-  save_plot(
-    viz_shap_swarm,
-    path = .path_figs(sprintf('shap_swarm%s.png', suffix))
-  )
-  
-  viz_shap_agg <- 
-    shap_agg_by_feature %>% 
-    .prep_viz_data() %>% 
-    ggplot() +
-    aes(y = lab, x = shap_value) +
-    geom_col() +
-    theme(
-      axis.text.y = ggtext::element_markdown(),
-      panel.grid.major.y = element_blank()
-    ) +
-    labs(
-      title = title,
-      subtitle = subtitle,
-      y = NULL,
-      x = 'mean(|SHAP value|)'
-    )
-  viz_shap_agg
-  
-  save_plot(
-    viz_shap_agg,
-    path = .path_figs(sprintf('shap_agg%s.png', suffix))
-  )
-  shap_agg_by_feature
-}
-
-# bdb epa ----
 if(!file.exists(path_epa_model_bdb)) {
-  # library(tidymodels)
-  
+
   set.seed(42)
-  folds <- caret::createFolds(model_data_bdb$epa_bdb, k = 10, list = TRUE, returnTrain = FALSE)
+  folds <- caret::createFolds(model_data_nflfastr$epa_bdb, k = 10, list = TRUE, returnTrain = FALSE)
   names(folds) <- NULL
   
   n_row <- 20
   grid <- 
     dials::grid_latin_hypercube(
-      dials::finalize(dials::mtry(), model_data_bdb),
+      dials::finalize(dials::mtry(), model_data_nflfastr),
       dials::min_n(),
       dials::tree_depth(),
       dials::learn_rate(),
@@ -622,15 +405,15 @@ if(!file.exists(path_epa_model_bdb)) {
     ) %>% 
     mutate(
       learn_rate = .1 * ((1:n_row) / n_row),
-      mtry = mtry / length(model_data_bdb)
+      mtry = mtry / length(model_data_nflfastr)
     )
   grid
   
   full_train_bdb_epa <-
     xgboost::xgb.DMatrix(
-      model_mat_bdb,
-      label = model_data_bdb$epa_bdb,
-      weight = model_data_bdb$Total_W_Scaled
+      model_mat_nflfastr,
+      label = model_data_nflfastr$epa_bdb,
+      weight = model_data_nflfastr$Total_W_Scaled
     )
   
   # function to search over hyperparameter grid
@@ -649,11 +432,12 @@ if(!file.exists(path_epa_model_bdb)) {
         min_child_weight = df$min_n
       )
 
-    epa_cv_model <- xgboost::xgb.cv(
-      data = full_train_bdb_epa, params = params, nrounds = nrounds,
-      folds = folds, metrics = list('rmse'),
-      early_stopping_rounds = 10, print_every_n = 10
-    )
+    epa_cv_model <-
+      xgboost::xgb.cv(
+        data = full_train_bdb_epa, params = params, nrounds = nrounds,
+        folds = folds, metrics = list('rmse'),
+        early_stopping_rounds = 10, print_every_n = 10
+      )
     
     output <- params
     output$iter = epa_cv_model$best_iteration
@@ -662,7 +446,7 @@ if(!file.exists(path_epa_model_bdb)) {
     
     this_param <- bind_rows(output)
     
-    path <- 'inst/epa_cv_model_bdb.rds'
+    path <- .path_data('epa_cv_model_bdb.rds')
     if (row == 1) {
       write_rds(this_param, path)
     } else {
@@ -696,125 +480,29 @@ if(!file.exists(path_epa_model_bdb)) {
     facet_wrap(~parameter, scales = 'free_x') +
     labs(x = NULL, y = 'logloss') +
     theme_minimal()
-
-  # based on the hyperparameter tuning
-  nrounds_bdb_epa <- 522
-  # best_result %>% as.list() %>% datapasta::vector_paste()
-  params_bdb_epa <-
-    list(
-      booster = 'gbtree',
-      objective = 'reg:squarederror',
-      eval_metric = 'rmse',
-      eta = 0.005,
-      gamma = 0.6304749,
-      subsample = 0.5729378,
-      colsample_bytree = 0.8518519,
-      max_depth = 6,
-      min_child_weight = 11
-    )
-  
-  epa_model_bdb <- 
-    xgboost::xgboost(
-      params = params_bdb_epa, 
-      data = full_train_bdb_epa, 
-      nrounds = nrounds_bdb_epa, 
-      verbose = 2
-    )
-  xgboost::xgb.save(epa_model_bdb, path_epa_model_bdb)
-} else {
-  epa_model_bdb <- xgboost::xgb.load(path_epa_model_bdb)
 }
-
-do_save_shap_plots(
-  title = '{nflfastR} EPA model with added features',
-  fit = epa_model_bdb,
-  mat = model_mat_bdb
-)
-
-# require(xgboost)
-.f_predict_bdb_epa <- function(object, newdata) {
-  newdata <- xgboost::xgb.DMatrix(data.matrix(newdata), missing = NA)
-  predict(epa_model_bdb, newdata)
-}
-
-set.seed(42)
-folds <- caret::createFolds(model_data_bdb$epa_bdb, k = 10, returnTrain = FALSE)
-names(folds) <- NULL
-idx <- folds[[1]]
-idx <- 1:nrow(model_mat_bdb)
-model_mat_bdb_sample <- model_mat_bdb[idx, ]
-df_bdb <- model_mat_bdb_sample %>% as.data.frame() %>% mutate(across(matches('[a-z][0-9]$'), factor))
-
-pred <- 
-  iml::Predictor$new(
-    epa_model_bdb, 
-    # type = 'prob',
-    # class = 1,
-    data = df_bdb, 
-    y = model_data_bdb[idx, ][['epa_bdb']],
-    predict.fun = .f_predict_bdb_epa
+# based on the hyperparameter tuning
+nrounds_bdb_epa <- 522
+# best_result %>% as.list()
+params_bdb_epa <-
+  list(
+    booster = 'gbtree',
+    objective = 'reg:squarederror',
+    eval_metric = 'rmse',
+    eta = 0.005,
+    gamma = 0.6304749,
+    subsample = 0.5729378,
+    colsample_bytree = 0.8518519,
+    max_depth = 6,
+    min_child_weight = 11
   )
 
-fe_example <- 
-  iml::FeatureEffect$new(
-    pred, 
-    feature = c('yards_to_go'), 
-    method = 'ice'
+epa_model_bdb <- 
+  xgboost::xgboost(
+    params = params_bdb_epa, 
+    data = full_train_bdb_epa, 
+    nrounds = nrounds_bdb_epa, 
+    verbose = 2
   )
+xgboost::xgb.save(epa_model_bdb, path_epa_model_bdb)
 
-viz_pdp_example <- 
-  fe_example$plot(rug = FALSE, show.data = FALSE) + 
-  theme(
-    plot.title = element_text(size = 16)
-  ) +
-  labs(
-    title = 'ICE for yards to go'
-  )
-ggsave(plot = last_plot(), filename = .path_figs('ice_example.png'), width = 6, height = 6)
-
-pdp::partial(
-  epa_model_bdb,
-  dtrain = full_train_bdb_epa, # as.data.frame(model_data_bdb), 
-  pred.var = 'is_target_picked1',
-  pred.fun = .f_predict_bdb_epa,
-  # grid.resolution = 20,
-  plot = TRUE,
-  center = TRUE,
-  plot.engine = 'ggplot2'
-)
-
-fe_is_target_picked <- 
-  iml::FeatureEffect$new(
-    pred, 
-    feature = c('roofdome'), 
-    method = 'ice'
-  )
-
-viz_ice_is_target_picked <-
-  fe_is_target_picked$plot(rug = FALSE, show.data = FALSE) + 
-  theme(
-    # plot.title = element_text(size = 16),
-    panel.grid.major.x = element_blank()
-  ) +
-  labs(
-    title = 'ICE for tageted pick play'
-  )
-ggsave(plot = last_plot(), filename = .path_figs('ice_is_target_picked.png'), width = 6, height = 6)
-
-fe_has_same_defender <- 
-  iml::FeatureEffect$new(
-    pred, 
-    feature = c('has_same_defender0'), 
-    method = 'ice'
-  )
-
-viz_ice_has_same_defender <-
-  fe_has_same_defender$plot(rug = FALSE, show.data = FALSE) + 
-  theme(
-    # plot.title = element_text(size = 16),
-    panel.grid.major.x = element_blank()
-  ) +
-  labs(
-    title = 'ICE for targeted defender coverage'
-  )
-ggsave(plot = last_plot(), filename = .path_figs('ice_has_same_defender0.png'), width = 6, height = 6)

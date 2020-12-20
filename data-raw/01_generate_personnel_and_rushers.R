@@ -107,4 +107,5 @@ do_identify_personnel_and_rushers <- function(week = 1L, at = 'end_rush', ...) {
 
 weeks <- 1:17L
 personnel_and_rushers <- weeks %>% do_by_week(f = do_identify_personnel_and_rushers)
+# usethis::use_data(personnel_and_rushers, internal = TRUE, overwrite = TRUE)
 usethis::use_data(personnel_and_rushers, overwrite = TRUE)

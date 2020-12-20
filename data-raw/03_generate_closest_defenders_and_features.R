@@ -3,41 +3,12 @@ library(tidyverse)
 positions <- import_positions()
 plays <- import_plays(drop_bad = TRUE)
 data('personnel_and_rushers', package = 'bdb2021')
+data('players_from_tracking', package = 'bdb2021')
+data('routes', package = 'bdb2021')
+routes <- routes %>% select(-week)
+data('receiver_intersections_adj', package = 'bdb2021')
 
 .compute_min_distances_possibly <- purrr::possibly(compute_min_distances, otherwise = NULL)
-
-.fix_d <- function(o, d, rushers) {
-
-  has_rushers <- !is.null(rushers)
-  # TODO: Do something if there are more route runners than defenders?
-  if(!has_rushers) {
-    return(d)
-  }
-  n_rushers <- rushers %>% nrow()
-  n_d <- d %>% nrow()
-  n_o <- o %>% nrow()
-  n_d_wo_rushers <- n_d - n_rushers
-  if(n_d_wo_rushers >= n_o) {
-    # If there will be at least as many defenders as offensive players after removing rushers.
-    res <- dplyr::anti_join(d, rushers, by = 'nfl_id')
-  } else {
-    res_init <- dplyr::left_join(d, rushers, by = 'nfl_id')
-    res <-
-      res_init %>%
-      dplyr::mutate(dplyr::across(.data$idx_closest_to_ball, ~dplyr::coalesce(.x, 0L))) %>%
-      dplyr::mutate(rn = dplyr::row_number(.data$idx_closest_to_ball)) %>%
-      dplyr::filter(.data$rn <= !!n_o) %>%
-      dplyr::select(.data$nfl_id, .data$x, .data$y)
-  }
-  res
-}
-
-.filter_side <- function(data, side = c('o', 'd')) {
-  side <- match.arg(side)
-  data %>%
-    dplyr::filter(.data$side == toupper(!!side)) %>%
-    dplyr::select(-.data$side)
-}
 
 .select_side <- function(data, side = c('O', 'D'), ...) {
   side <- match.arg(side)
@@ -60,8 +31,14 @@ data('personnel_and_rushers', package = 'bdb2021')
     )
 }
 
-do_generate_features <- function(week = 1L, n_halfseconds = 7L, overwrite_features = TRUE, overwrite_min_dists_robust = FALSE, overwrite_min_dists_target = TRUE, ...) {
-
+do_generate_features <-
+  function(week = 1L,
+           n_halfseconds = 7L,
+           overwrite_features = TRUE,
+           overwrite_min_dists_robust = FALSE,
+           overwrite_min_dists_target = TRUE,
+           ...) {
+    
   path_min_dists <- file.path(get_bdb_dir_data(), sprintf('min_dists_robust_week%d.parquet', week))
   do_min_dists <- !file.exists(path_min_dists) | overwrite_min_dists_robust
 
@@ -566,11 +543,15 @@ features_n %>% filter(n > 6L)
 bad_feature_ids <- features_n %>% filter(n > 6L) %>% distinct(game_id, play_id)
 bad_feature_ids
 
-new_features <-
+features <-
   features %>%
   anti_join(bad_feature_ids)
-new_features
-arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'new_features.parquet'))
+features
+
+.export_parquet <- function(x, .name = deparse(subtitute(x))) {
+  arrow::write_parquet(x, file.path(get_bdb_dir_data(), .name))
+}
+.export_parquet(features)
 
 min_dists_naive_od_target <-
   weeks %>%
@@ -578,7 +559,7 @@ min_dists_naive_od_target <-
   file.path(get_bdb_dir_data(), .) %>%
   map_dfr(arrow::read_parquet)
 min_dists_naive_od_target
-arrow::write_parquet(min_dists_naive_od_target, file.path(get_bdb_dir_data(), 'min_dists_naive_od_target.parquet'))
+.export_parquet(min_dists_naive_od_target)
 
 min_dists_naive_d_target <-
   weeks %>%
@@ -586,5 +567,214 @@ min_dists_naive_d_target <-
   file.path(get_bdb_dir_data(), .) %>%
   map_dfr(arrow::read_parquet)
 min_dists_naive_d_target
-arrow::write_parquet(min_dists_naive_d_target, file.path(get_bdb_dir_data(), 'min_dists_naive_target.parquet'))
-beepr::beep(3)
+.export_parquet(min_dists_naive_d_target)
+# beepr::beep(3)
+
+events_end_rush <- .get_events_end_rush()
+features_min_init <-
+  features %>%
+  filter(event %in% c('0.0 sec', events_end_rush)) %>%
+  select(week, game_id, play_id, event, frame_id, sec, nfl_id, nfl_id_d_robust) %>%
+  # If there are multiple of these `events_end_rush` on the same play, then just pick the first
+  group_by(game_id, play_id, nfl_id, event) %>%
+  # filter(frame_id == min(frame_id)) %>%
+  filter(row_number() == 1L) %>%
+  ungroup()
+features_min_init
+
+features_min_end_drop <-
+  features_min_init %>% 
+  filter(event %in% events_end_rush) %>% 
+  group_by(game_id, play_id, nfl_id) %>% 
+  # slice_min(frame_id, with_ties = FALSE) %>% 
+  filter(row_number(frame_id) > 1L) %>% 
+  ungroup()
+features_min_end_drop
+
+features_min <-
+  features_min_init %>% 
+  anti_join(features_min_end_drop)
+features_min
+
+# # Just checking that all of these are 1
+# features_min %>%
+#   count(game_id, play_id, nfl_id, event) %>%
+#   count(n, name = 'nn')
+
+# Adding the `_defender` and `_intersect` columns. Need to join on itself in order to get `had_intersect`, hence the `_init` added to the variable name.
+sec_cutoff <- get_intersection_cutoff()
+features_lag_init <-
+  features_min %>%
+  group_by(game_id, play_id, nfl_id) %>%
+  mutate(
+    nfl_id_d_robust_init = first(nfl_id_d_robust),
+    has_same_defender = if_else(nfl_id_d_robust == nfl_id_d_robust_init, TRUE, FALSE)
+  ) %>%
+  ungroup() %>%
+  mutate(across(has_same_defender, ~if_else(sec == 0, NA, .x))) %>%
+  left_join(
+    receiver_intersections_adj %>%
+      # filter(sec <= .sec_cutoff) %>% 
+      mutate(before_cutoff = if_else(sec <= !!sec_cutoff, TRUE, FALSE)) %>% 
+      select(week, game_id, play_id, nfl_id, nfl_id_intersect, sec_intersect = sec, is_lo, before_cutoff) %>%
+      mutate(has_intersect = TRUE)
+  ) %>%
+  mutate(
+    across(has_intersect, ~coalesce(.x, FALSE)),
+    across(has_intersect, ~if_else(sec == 0, NA, .x))
+  ) %>% 
+  # idk why i get some more plays
+  distinct()
+
+# This is to include all seconds distinctly. Adding epa in case it is useful at some point.
+# `pick_plays` has epa
+features_lag <-
+  features_lag_init %>%
+  left_join(
+    features_lag_init %>%
+      filter(has_intersect) %>%
+      select(
+        week,
+        game_id,
+        play_id,
+        frame_id,
+        nfl_id,
+        nfl_id_intersect,
+        nfl_id_d_robust,
+        nfl_id_d_robust_init
+      ) %>%
+      mutate(had_intersect = TRUE)
+  ) %>%
+  group_by(game_id, play_id, nfl_id) %>%
+  arrange(frame_id, .by_group = TRUE) %>%
+  fill(had_intersect, before_cutoff) %>%
+  ungroup() %>%
+  inner_join(
+    plays %>%
+      select(game_id, play_id, is_pass_successful, pass_result, epa, nfl_id_target = target_nfl_id)
+  ) %>%
+  left_join(
+    pbp %>%
+      select(game_id, play_id, wpa_nflfastr = wpa, epa_nflfastr = epa)
+  ) %>% 
+  distinct() %>% 
+  mutate(
+    across(has_same_defender, ~.x %>% as.integer() %>% factor())
+  )
+features_lag %>% count(before_cutoff)
+
+# Taking the 1 non-snap frame of each play
+pick_features <-
+  features_lag %>% 
+  filter(sec > 0) %>% 
+  # `had_intersect` is redundant with `has_intersect` if there is only one frame per play and it's the last frame.
+  select(-had_intersect) %>% 
+  # This is the last second measured on the play.
+  select(-sec)
+pick_features %>% count(before_cutoff)
+
+plays_w_pick_def_info <-
+  pick_features %>%
+  left_join(
+    players_from_tracking,
+    by = c('game_id', 'play_id', 'nfl_id')
+  ) %>%
+  left_join(
+    players_from_tracking %>%
+      rename_with(~sprintf('%s_intersect', .x), c(nfl_id, display_name, jersey_number, position)),
+    by = c('game_id', 'play_id', 'nfl_id_intersect')
+  ) %>%
+  left_join(
+    players_from_tracking %>%
+      rename_with(~sprintf('%s_target', .x), c(nfl_id, display_name, jersey_number, position)),
+    by = c('game_id', 'play_id', 'nfl_id_target')
+  ) %>%
+  mutate(
+    across(c(nfl_id_target, jersey_number), ~coalesce(.x, -1L)),
+    across(c(display_name, position), ~coalesce(.x, '?'))
+  ) %>%
+  mutate(
+    is_target = if_else(nfl_id == nfl_id_target, TRUE, FALSE)
+  ) %>% 
+  left_join(
+    routes,
+    by = c('game_id', 'play_id', 'nfl_id')
+  ) %>%
+  left_join(
+    routes %>%
+      rename_with(~sprintf('%s_intersect', .x), c(nfl_id, route)),
+    by = c('game_id', 'play_id', 'nfl_id_intersect')
+  ) %>%
+  left_join(
+    players_from_tracking %>% 
+      rename_with(~sprintf('%s_d_robust', .x), c(nfl_id, display_name, jersey_number, position)),
+    by = c('game_id', 'play_id', 'nfl_id_d_robust')
+  ) %>%
+  left_join(
+    players_from_tracking %>% 
+      rename_with(~sprintf('%s_d_robust_init', .x), c(nfl_id, display_name, jersey_number, position)),
+    by = c('game_id', 'play_id', 'nfl_id_d_robust_init')
+  )
+plays_w_pick_def_info
+usethis::use_data(plays_w_pick_def_info, overwrite = TRUE)
+
+plays_w_pick_off_info_min <-
+  plays_w_pick_off_info %>%
+  select(
+    
+    # extra
+    game_id,
+    play_id,
+    is_pass_successful,
+    
+    epa, # response
+    is_target_picked, # treatment
+    
+    # stuff we already have that's redudndant with nflfastR covariates
+    
+    down = down_fct,
+    yards_to_go,
+    
+    # nflfastR stuff
+    
+    half_seconds,
+    yardline_100,
+    is_home,
+    # retractable,
+    # dome,
+    # outdoors,
+    roof,
+    off_timeouts,
+    def_timeouts
+  )
+
+plays_w_pick_def_info_min <-
+  plays_w_pick_def_info %>% 
+  filter(nfl_id == nfl_id_target) %>% 
+  # filter(before_cutoff) %>% 
+  select(
+    game_id, play_id, has_same_defender
+  )
+
+snap_frames <-
+  min_dists_naive_od_target %>%
+  group_by(game_id, play_id) %>%
+  filter(frame_id == min(frame_id)) %>%
+  ungroup() %>%
+  select(game_id, play_id, frame_id)
+snap_frames
+
+min_dists_naive_od_target_filt <-
+  min_dists_naive_od_target %>%
+  semi_join(snap_frames)
+min_dists_naive_od_target_filt
+
+plays_w_pick_info_features <-
+  min_dists_naive_od_target_filt %>% 
+  select(-target_nfl_id) %>% 
+  inner_join(plays_w_pick_off_info_min) %>% 
+  inner_join(plays_w_pick_def_info_min)
+plays_w_pick_info_features
+# arrow::write_parquet(features, file.path('inst', 'features.parquet'))
+# arrow::write_parquet(features, file.path(get_bdb_dir_data(), 'plays_w_pick_info_features.parquet'))
+usethis::use_data(plays_w_pick_info, overwrite = TRUE)

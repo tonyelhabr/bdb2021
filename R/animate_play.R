@@ -1,4 +1,9 @@
 
+#' Ignore rushers
+#' 
+#' Ignore rushers on defensive side of ball (in `d`) in min distance calculation.
+#' 
+#' @details This should only be used if you know what you're doing.
 #' @export
 .fix_d <- function(o, d, rushers) {
   
@@ -26,7 +31,11 @@
   res
 }
 
-
+#' Filter by team
+#' 
+#' Filter to one side of the ball (offense or defense).
+#' 
+#' @details This should only be used if you know what you're doing.
 #' @export
 .filter_side <- function(data, side = c('o', 'd')) {
   side <- match.arg(side)
@@ -35,6 +44,11 @@
     dplyr::select(-.data$side)
 }
 
+#' Save animation
+#' 
+#' Save animation
+#' 
+#' @param anim animation object
 #' @export
 save_animation <-
   function(anim,
@@ -48,7 +62,7 @@ save_animation <-
            path = file.path(dir, sprintf('%s.%s', file, ext)),
            renderer = gganimate::gifski_renderer(path),
            ...) {
-    # browser()
+
     res <-
       gganimate::animate(
         anim,

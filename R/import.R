@@ -276,7 +276,10 @@ import_plays <- memoise::memoise({function(drop_bad = TRUE) {
         epa = vroom::col_double(),
         is_defensive_pi = vroom::col_logical()
       )
-    )
+    ) %>% 
+    dplyr::filter(!is.na(.data$absolute_yardline_number)) %>% 
+    dplyr::mutate(is_pass_successful = dplyr::if_else(.data$pass_result == 'C', 1, 0) %>% factor())
+  
   path <- file.path(get_bdb_dir_in(), 'targetedReciever.csv')
   target <-
     path %>%
@@ -291,7 +294,7 @@ import_plays <- memoise::memoise({function(drop_bad = TRUE) {
   plays <-
     plays %>%
     dplyr::inner_join(target, by = c('game_id', 'play_id'))
-  plays
+
 
   suppressWarnings(
     plays <-
@@ -354,13 +357,6 @@ import_nflfastr_pbp <- memoise::memoise({function(season = 2018) {
     dplyr::mutate(dplyr::across(c(.data$game_id, .data$play_id), as.integer))
 }})
 
-#' Import package-generated half-second features
-#' 
-#' @export
-import_features <- function() {
-  file.path(get_bdb_dir_data(), 'features.parquet') %>% 
-  arrow::read_parquet()
-}
 
 #' Import package-generated half-second features
 #' 
@@ -375,23 +371,6 @@ import_new_features <- memoise::memoise({function() {
     arrow::read_parquet()
 }})
 
-#' Import package-generated raw half-second target probabilities
-#' 
-#' @export
-import_raw_target_probs <- function() {
-  file.path(get_bdb_dir_data(), 'probs-tp-final-folds.parquet') %>%
-    arrow::read_parquet() 
-}
-
-
-#' Import package-generated half-second min distances to target receiver
-#' 
-#' @export
-import_min_dists_naive_target <- function() {
-  file.path(get_bdb_dir_data(), 'min_dists_naive_target.parquet') %>%
-    arrow::read_parquet() 
-}
-
 #' Import package-generated half-second min distances to target receiver
 #' 
 #' @export
@@ -400,19 +379,10 @@ import_min_dists_naive_od_target <- function() {
     arrow::read_parquet() 
 }
 
-#' Import package-generated clean half-second target probabilities
+#' Import package-generated EPA model based on `{nflfastR}`'s model
 #' 
 #' @export
-import_clean_target_probs <- function() {
-  file.path(get_bdb_dir_data(), 'target_probs_clean.parquet') %>%
-    arrow::read_parquet() 
+import_epa_model_bdb <- function() {
+  file.path('inst', 'epa_model_bdb') %>%
+    xgboost::xgb.load()
 }
-
-#' Import package-generated clean target probability model
-#' 
-#' @export
-import_target_prob_model <- memoise::memoise({function() {
-  file.path(get_bdb_dir_data(), 'fit-tp-final.rds') %>% 
-    readr::read_rds()
-}})
-

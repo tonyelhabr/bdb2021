@@ -1,12 +1,17 @@
 
-identify_intersection_possibly <- purrr::possibly(identify_intersection, otherwise = NULL)
+plays <- import_plays()
+pbp <- import_pbp()
+data('personnel_and_rushers', package = 'bdb2021')
+data('players_from_tracking', package = 'bdb2021')
+
+# identify_intersection_possibly <- purrr::possibly(identify_intersection, otherwise = NULL)
 
 identify_intersections_until <- function(data, sec = 0.5) {
 
   .display_info('Identifying intersections up through {sec} seconds at {Sys.time()}.')
   # meta <- tibble::tibble(game_id = 2018090905L, play_id = 585L) # Week 1 example of an pick before 0.5 seconds
   data <- receivers %>% inner_join(meta)
-  # intersections_init %>% select(data) %>% unnest(data) -> data
+
   intersections_init <-
     data %>%
     # Need half-second frames before `sec`, so shouldn't filter those out.
@@ -159,6 +164,99 @@ receiver_intersections_adj <-
   select(-x_idx_frac)
 receiver_intersections_adj
 
-usethis::use_data(receiver_intersections, overwrite = TRUE)
-usethis::use_data(pick_play_ids_adj, overwrite = TRUE)
-usethis::use_data(receiver_intersections_adj, overwrite = TRUE)
+sec_cutoff <- get_intersection_cutoff()
+pick_play_meta_init <-
+  receiver_intersections_adj %>%
+  filter(sec <= !!sec_cutoff) %>%
+  # Just get the `target_nfl_id` first.
+  inner_join(
+    plays %>%
+      select(game_id, play_id, target_nfl_id),
+    by = c('game_id', 'play_id')
+  ) %>%
+  group_by(week, game_id, play_id, nfl_id, nfl_id_intersect, is_lo, sec) %>%
+  # There will be some NAs here due to missing `target_nfl_id`s.
+  # I think it's best to leave these in.
+  summarize(
+    is_target_picked = sum(target_nfl_id == nfl_id)
+  ) %>%
+  ungroup() %>%
+  select(-week)
+pick_play_meta_init
+
+.f_nrow <- function(id, data) {
+  if(is.null(data)) {
+    return(0L)
+  }
+  res <- data %>% filter(nfl_id %in% id)
+  ifelse(nrow(res) > 0L, 1L, 0L)
+}
+
+plays_w_pick_off_info <-
+  plays %>%
+  mutate(across(down, list(fct = factor))) %>% 
+  left_join(
+    pick_play_meta_init %>%
+      # Keep the pick play to one row per play at maximum
+      nest(pick_data = -c(game_id, play_id)),
+    by = c('game_id', 'play_id')
+  ) %>%
+  # relocate(pick_data) %>% 
+  mutate(is_target_picked = map2_int(target_nfl_id, pick_data, ~.f_nrow(..1, ..2)) %>% factor()) %>% 
+  relocate(is_target_picked) %>% 
+  left_join(
+    personnel_and_rushers %>%
+      select(-rushers) %>%
+      rename_with(~sprintf('%s_personnel', .x), matches('^n_')) %>%
+      rename(n_rusher = n_rusher_personnel),
+    by = c('game_id', 'play_id')
+  ) %>%
+  mutate(
+    has_intersect = map_lgl(pick_data, ~!is.null(.x)),
+    across(n_rusher, ~coalesce(.x, 0L))
+  ) %>%
+  relocate(game_id, play_id, has_intersect, pick_data) %>%
+  left_join(
+    pbp %>%
+      mutate(
+        model_roof = if_else(
+          is.na(roof) | roof == 'open' | roof == 'closed', 'retractable',
+          as.character(roof)
+        ),
+        model_roof = as.factor(model_roof),
+        retractable = if_else(model_roof == 'retractable', 1, 0),
+        dome = if_else(model_roof ==  'dome', 1, 0),
+        outdoors = if_else(model_roof == 'outdoors', 1, 0),
+        across(roof, factor),
+        is_home = if_else(home_team == posteam, 1, 0) %>% factor()
+      ) %>% 
+      select(
+        game_id,
+        play_id,
+        half_seconds = half_seconds_remaining,
+        yardline_100,
+        is_home,
+        retractable,
+        dome,
+        outdoors,
+        roof,
+        off_timeouts = posteam_timeouts_remaining,
+        def_timeouts = defteam_timeouts_remaining,
+        
+        wp_nflfastr = wp,
+        wpa_nflfastr = wpa,
+        epa_nflfastr = epa
+      ),
+    by = c('game_id', 'play_id')
+  ) %>%
+  select(-pick_data) %>%
+  mutate(
+    across(has_intersect, ~if_else(.x, 1L, 0L) %>% factor())
+  )
+plays_w_pick_off_info
+
+usethis::use_data(
+  (plays_w_pick_off_info,
+  receiver_intersections_adj, 
+  overwrite = TRUE
+)
