@@ -1,7 +1,12 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# 0\. Introduction
+All code is available in [this GitHub
+repo](https://github.com/tonyelhabr/bdb2021). Basically everything in
+this notebook is in [this
+script](https://github.com/tonyelhabr/bdb2021/blob/master/data-raw/99_analyze_treatments.R)
+
+# 0. Introduction
 
 I attempt to quantify whether there is a significant relationships
 between play success, as measured by expected points added (EPA), when
@@ -12,7 +17,7 @@ exposed to one or both of the following “treatments”:
 
 2.  Whether the defender of the eventual targeted receiver at the time
     of the throw is or is not the same as the defender at the time of
-    the snap.\[1\]
+    the snap.[1]
 
 Both when using a [causal
 approach](https://en.wikipedia.org/wiki/Causal_analysis) and a more
@@ -23,11 +28,17 @@ difference in EPA means with
 [t-tests](https://en.wikipedia.org/wiki/Student%27s_t-test), i.e. a
 [Frequentist
 approach](https://en.wikipedia.org/wiki/Frequentist_inference).
+
 Likewise, when investigating the role the targeted defender in pick
 plays, I find that the causal and machine learning approaches agree with
-one another, but disagree with the un-adjusted Frequentist implication
-that there is a significant difference between a strict, man-to-man
-coverage and other coverages in reducing play success.
+one another, but disagree with the un-adjusted Frequentist implication.
+The causal and machine learning approaches indicate that there may be a
+significant relationship between EPA and the type of coverage on the
+targeted receiver given that the pass is completed, but otherwise
+suggest that the type of coverage doesn’t have a significant
+relationship with EPA. On the other hand, the Frequentist approach more
+generally implies that EPA is significantly different depending on the
+coverage played on the targeted receiver.
 
 ## Motivation
 
@@ -37,19 +48,19 @@ coverage and other coverages in reducing play success.
 > receivers to essentially set screens to get their teammates wide open.
 > Technically, it’s against the rule to set a pick deliberately, but
 > referees have a hard time judging intentions and they rarely penalize
-> these plays”. - [Ted Nguyen, USA
-> Football, 2017](https://blogs.usafootball.com/blog/4177/rub-concepts-how-to-defend-them-and-how-offenses-can-counteract-it)
+> these plays”. - [Ted Nguyen, USA Football,
+> 2017](https://blogs.usafootball.com/blog/4177/rub-concepts-how-to-defend-them-and-how-offenses-can-counteract-it)
 
 To provide an illustration of the impact pick plays can have, below is
 the pick play that resulted in the highest expected EPA in the 2018
 season.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_pick_play.gif)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/highest_epa_pick_play.gif)
 
 Likewise, below is the pick play that resulted in the lowest EPA (good
 for the defense).
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/lowest_epa_pick_play.gif)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/lowest_epa_pick_play.gif)
 
 Just from these two extreme plays, one can get a sense for the high
 amount of leverage that these plays can have on game flow and,
@@ -113,14 +124,14 @@ are several actionable learning outcomes:
 A caveat: the proposition that one can adequately evaluate defensive
 skill from tracking data is debatable. What do I mean? Well, we do not
 know for certain whether individual defenders were subjected to
-“non-optimal” defensive play calls in certain situation since we do
-not know the team defensive coverages for all plays. And it seems
-impossible to account for the manner in which a given team may have
-coached defenders to react dynamically in response to certain offensive
-actions. This analysis cannot, and does not try to, quantify these
-unknown factors. I simply focus on what can be quantified.
+“non-optimal” defensive play calls in certain situation since we do not
+know the team defensive coverages for all plays. And it seems impossible
+to account for the manner in which a given team may have coached
+defenders to react dynamically in response to certain offensive actions.
+This analysis cannot, and does not try to, quantify these unknown
+factors. I simply focus on what can be quantified.
 
-# 1\. Identifying Pick Route Combinations
+# 1. Identifying Pick Route Combinations
 
 ## Methodology
 
@@ -132,10 +143,9 @@ routes run by the receivers. The former can be inferred from the `x`
 and`y` fields in the tracking data, and the latter is provided
 explicitly. Upon visual investigation, I found that this method is much
 too sensitive to some strict definition of pick route combinations
-(e.g. `SLANT` + `OUT` for two receivers, `SLANT` + `{route}` + `OUT`
-for 3 receivers, etc.) and too naive to the fact that the same type of
-route (e.g. a SLANT) can be run in a myriad of styles. Below is an
-example.
+(e.g. `SLANT` + `OUT` for two receivers, `SLANT` + `{route}` + `OUT` for
+3 receivers, etc.) and too naive to the fact that the same type of route
+(e.g. a SLANT) can be run in a myriad of styles. Below is an example.
 
 A second way to identify pick plays is to again (1) start with offensive
 alignment and then (2) track the order of the receivers relative to the
@@ -163,7 +173,7 @@ Why within 2 seconds of the snap? Well, I began by counting how frequent
 intersections occurred up through `n` seconds after the
 snap—specifically, 0.5 seconds, 1 second, 1.5 seconds, …, 3 seconds.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_intersections_after_n_sec.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_intersections_after_n_sec.png)
 
 This was certainly helpful to get some numbers in mind, but things
 ultimately came down to me visually inspecting plays at each threshold
@@ -176,7 +186,7 @@ and 3 seconds after the ball is snapped. Note how Cooper Kupp (18) and
 Robert Woods (17) line up on different sides of the offense line and
 cross paths.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_3.0s_pick_play.gif)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/highest_epa_3.0s_pick_play.gif)
 
 The intention of this example is to illustrate indirectly why the choice
 of 2 seconds after the snap is used as the maximum time after which a
@@ -194,7 +204,7 @@ crossing of David Njoku’s (85) path with that of Jarvis Landry’s path
 occurs within 1 second of the snap, so their pair of routes does count
 as a pick route combination.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_2.5s_pick_play.gif)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/highest_epa_2.5s_pick_play.gif)
 
 Below is an example in which the receiver paths did not actually
 intersect, yet the play is still classified as a pick play due to the 1
@@ -204,7 +214,7 @@ legitimate pick actions. Note how Zach Ertz (86) crosses just under
 Nelson Agholor’s (13) starting position, ultimately receiving a pass
 thrown to him less than 1.5 seconds after the snap.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/y_buffer_pick_play.gif)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/y_buffer_pick_play.gif)
 
 ## Team and Player Offensive Trends
 
@@ -222,13 +232,13 @@ tend to run a lot of mesh and/or high-low route concepts that may be
 classified as “downfield” picks; however, such route combinations often
 don’t fit my criteria.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_pick_play_frac.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_pick_play_frac.png)
 
 Given the above chart, perhaps it’s not surprising to find a Los Angeles
 Rams receiver (Robert Woods) at the top of the list of receivers
 involved in the most pick route combinations.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_picks_by_receiver.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_picks_by_receiver.png)
 
 Again, given the team breakdown, it’s no surprise to find 3 Rams players
 (Robert Woods, Cooper Kupp, and Josh Reynolds) and 2 Football Team’s
@@ -236,7 +246,7 @@ players (Jordan Reed and Jamison Crowder) among the receivers with the
 highest pick route involvement relative to their total number of routes
 run.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_frac_by_receiver.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_frac_by_receiver.png)
 
 Julio Jones happens to be the one targeted the most when involved in a
 pick route combination. Anecdotally, one can make sense of this. Jones
@@ -244,9 +254,9 @@ is known as one of the top receivers in the game, having a pretty
 diverse route tree. 2018 was his personal second best season in terms of
 yards received and receptions.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_picks_by_receiver_target.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_picks_by_receiver_target.png)
 
-# 2\. Identifying Defensive Coverage
+# 2. Identifying Defensive Coverage
 
 ## Methodology
 
@@ -299,7 +309,7 @@ second into the play; but just before the throw, Dont’a Hightower (54),
 who looks to be playing some kind of zone, becomes assigned to
 Westbrook.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_w_diff_defender_pick_play.gif)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/highest_epa_w_diff_defender_pick_play.gif)
 
 The above play does a good job of illustrating how the receiver-defender
 pairing capability of bipartite matching can clarify the most likely
@@ -321,7 +331,7 @@ Doctson (18) initial defender, Anthony Brown (30), becomes re-assigned
 to Trey Quinn (14), as Brown drifts back, not running forward to
 Doctson.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/lowest_epa_w_diff_defender_pick_play.gif)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/lowest_epa_w_diff_defender_pick_play.gif)
 
 Next is a high EPA example in which the assigned defender on a target
 pick route combination is the same at both the snap and the throw.
@@ -330,7 +340,7 @@ this play is probably attributable to a juke performed by Cooper Kupp
 (18) and/or over-committing from Chidobe Awuzie (24), not space created
 as a result of his pick off the line with Robert Woods (17).
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/highest_epa_w_same_defender_pick_play.gif)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/highest_epa_w_same_defender_pick_play.gif)
 
 Finally, below is a low EPA example where the assigned defender does not
 change. The interception doesn’t seem directly attributable to the
@@ -339,9 +349,9 @@ close, man-to-man defense he played (although, subjectively, he does
 guard Chester Rogers (80) pretty closely). Rather, the low EPA seems
 mostly attributable to a bad decision made by Andrew Luck (12).
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/lowest_epa_w_same_defender_pick_play.gif)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/lowest_epa_w_same_defender_pick_play.gif)
 
-# 3\. Analysis
+# 3. Analysis
 
 The task at hand is to quantify whether or not there is a significant
 difference between the success of plays when exposed to one of the
@@ -411,7 +421,7 @@ we take. Thus, for the following analysis, we don’t differentiate
 between the high and low receiver in a pick route combination; we only
 care that a targeted receiver is involved in the combination.
 
-3)  is not problematic for our analysis simply because we focus on the
+1.  is not problematic for our analysis simply because we focus on the
     targeted receiver.
 
 ## Frequentist Approach
@@ -422,7 +432,7 @@ our other findings.
 
 The tables that follow describe the frequency and success of targeted
 pick plays—our first treatment of interest—across all teams in the 2018
-season.\[2\] Data is broken out in two manners: (1) by play success and
+season.[2] Data is broken out in two manners: (1) by play success and
 (2) by our second treatment of interest—whether the target receiver was
 covered by the same defender as their initial defender. Note that EPA
 has a non-normal, pseudo-bimodal distribution that can be conflated by a
@@ -432,19 +442,19 @@ as a means of trying to capture the non-independent nature of targeted
 picks and coverage on the targeted defender (although by no means would
 I say that is a very robust means of evaluating this relationship).
 
-![tab\_t\_test\_epa\_is\_target\_picked\_unadjusted](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_t_test_epa_is_target_picked_unadjusted.png)
+![tab\_t\_test\_epa\_is\_target\_picked\_unadjusted](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_is_target_picked_unadjusted.png)
 
-![tab\_t\_test\_n\_is\_target\_picked\_unadjusted](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_t_test_n_is_target_picked_unadjusted.png)
+![tab\_t\_test\_n\_is\_target\_picked\_unadjusted](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_n_is_target_picked_unadjusted.png)
 
 (The `N` that stands by itself represents count, while the `N` that
 follows a question mark `?` indicates that the condition is not true.)
 
-![viz\_ep\_swarm](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_epa_swarm.png)
+![viz\_ep\_swarm](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_epa_swarm.png)
 
 Only 2 of the 9 t-tests show that there is a lack of a significant
 difference in means at threshold of 0.05.
 
-  - The insignificant difference for `"EPA | Same Defender? Y"`
+-   The insignificant difference for `"EPA | Same Defender? Y"`
     (i.e. EPA when the targeted receiver is covered by their initial
     defender at the time of the throw is not significantly different on
     pick plays versus all other passes) implies that man-to-man coverage
@@ -454,32 +464,33 @@ difference in means at threshold of 0.05.
     stopping pick plays. (Note that `"EPA | Same Defender? N"` has a
     statistically significant difference in means, and the mean for the
     targeted pick plays is higher.)
-  - The insignificant difference for `"EPA | Pass Successful? N & Same
-    Defender? N"` (i.e. given an unsuccessful pass, EPA when the
-    targeted receiver is not covered by their initial defender is not
-    significantly different on pick plays versus all other passes) is
-    best interpreted by comparing it to the significant difference in
-    it’s direct counterpart, `"EPA | Pass Successful? N & Same
-    Defender? N"`. The latter result implies that non-man coverage has a
-    significant relationship with EPA when the pass is not successful,
-    while the former result implies that man coverage does not. Again,
-    the real-world implication is that non-man coverage is impactful.
+-   The insignificant difference for
+    `"EPA | Pass Successful? N & Same Defender? N"` (i.e. given an
+    unsuccessful pass, EPA when the targeted receiver is not covered by
+    their initial defender is not significantly different on pick plays
+    versus all other passes) is best interpreted by comparing it to the
+    significant difference in it’s direct counterpart,
+    `"EPA | Pass Successful? N & Same Defender? N"`. The latter result
+    implies that non-man coverage has a significant relationship with
+    EPA when the pass is not successful, while the former result implies
+    that man coverage does not. Again, the real-world implication is
+    that non-man coverage is impactful.
 
 Let’s go on and break down EPA in an analogous manner, this time basing
 our t-tests on our second treatment of interest—the type of coverage on
 the targeted receiver. (Note the change in the column headers and
 `Characteristic` labels.)
 
-![tab\_t\_test\_epa\_has\_same\_defender\_unadjusted](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_t_test_epa_has_same_defender_unadjusted.png)
+![tab\_t\_test\_epa\_has\_same\_defender\_unadjusted](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_has_same_defender_unadjusted.png)
 
 And, for reference, here are the sample sizes.
 
-![tab\_t\_test\_n\_has\_same\_defender\_unadjusted](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_t_test_n_has_same_defender_unadjusted.png)
+![tab\_t\_test\_n\_has\_same\_defender\_unadjusted](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_n_has_same_defender_unadjusted.png)
 
 There are more insignificant results this time, 5 of the 9 tests. To
 highlight a few of the significant results:
 
-  - There is a significant difference in EPA given that the pass is
+-   There is a significant difference in EPA given that the pass is
     successful (`"EPA | Pass Successful? Y`). The higher EPA value of
     `"Same Defender? Y"` relative to `"Same Defender? N"` suggests that
     man coverage on the targeted receiver is disadvantageous for the
@@ -487,7 +498,7 @@ highlight a few of the significant results:
     coverage is more likely to give up big plays, which most people
     would say without ever looking at the numbers.
 
-  - There is a significant difference given that the pass is successful
+-   There is a significant difference given that the pass is successful
     and the targeted receiver is not involved in a pick route
     combination (`"EPA | Pass Successful? Y & Target Picked? N`). (This
     is like a subset of the prior result, but specific to non-pick
@@ -503,7 +514,7 @@ notebook](https://www.kaggle.com/jdruzzi/pass-coverage-classification-80-recall)
 as well as the split implied by the [week 1 team coverage
 labels](https://www.kaggle.com/tombliss/additional-data-coverage-schemes-for-week-1).
 This is re-asuring in some way—perhaps our simplistic individual
-coverage identification is not so bad\!
+coverage identification is not so bad!
 
 ## Causal Analysis
 
@@ -512,7 +523,7 @@ targeted receiver is involved in a pick—with a non-causal approach, we
 were basically assuming the following [directed acyclic graph
 (DAG)](https://en.wikipedia.org/wiki/Directed_acyclic_graph).
 
-![dag\_is\_target\_picked\_t-test](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/dag_is_target_picked_t-test.png)
+![dag\_is\_target\_picked\_t-test](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_is_target_picked_t-test.png)
 
 Likewise, the DAG when focusing on the second exposure—whether the
 targeted defender at the time of the throw is the same initial defender
@@ -528,13 +539,13 @@ complexity to account for
 to account for the fact that our exposure has a relationship with the
 features for the EPA model, which can bias inference.
 
-![dag\_is\_target\_picked\_wo\_player\_tracking](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/dag_is_target_picked_wo_player_tracking.png)
+![dag\_is\_target\_picked\_wo\_player\_tracking](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_is_target_picked_wo_player_tracking.png)
 
 And, since we have tracking data, we can actually do better than that—we
 can account for the un-observed effects of tracking-based features on
 EPA. These serve as “controls” in our causal approach.
 
-![dag\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/dag_is_target_picked.png)
+![dag\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_is_target_picked.png)
 
 (Again, the DAG for the causal effect of our second exposure is
 identical, with the exception of the label of the exposure node.)
@@ -548,15 +559,15 @@ features, I’ll use [the features that the `{nflfastR}` expected points
 (EP) model
 uses](https://www.opensourcefootball.com/posts/2020-09-28-nflfastr-ep-wp-and-cp-models/#ep-model-features),
 with the exception of the `era` variable (since we only have one season
-of data. \[3\]
+of data. [3]
 
-  - seconds remaining in half (`half_seconds`)
-  - yard line (`yardline_100`)
-  - whether possession team is at home (`is_home`)
-  - `roof` type (retractable, dome, outdoors)
-  - down (`down`)
-  - yards to go (`yards_to_go`)
-  - timeouts remaining (`off_timeouts` and `def_timeouts`)
+-   seconds remaining in half (`half_seconds`)
+-   yard line (`yardline_100`)
+-   whether possession team is at home (`is_home`)
+-   `roof` type (retractable, dome, outdoors)
+-   down (`down`)
+-   yards to go (`yards_to_go`)
+-   timeouts remaining (`off_timeouts` and `def_timeouts`)
 
 (I’m going under the assumption that the Big Data Bowl model uses
 similar, if not identical features .)
@@ -566,12 +577,12 @@ DAG.
 
 For tracking features, I’ll include only a handful:
 
-  - x coordinate of the target receiver (`x`), the nearest offensive
+-   x coordinate of the target receiver (`x`), the nearest offensive
     player to the targeted receiver (`x_o`), and the nearest defender
     (`x_d`) at the time of the snap
-  - `y` coordinate (along the plane of `yardline_100`) of the targeted
+-   `y` coordinate (along the plane of `yardline_100`) of the targeted
     receiver
-  - distance from the nearest offensive and defensive players to the
+-   distance from the nearest offensive and defensive players to the
     ball at the time of the snap (`dist_o` and `dist_d`).
 
 The coordinates are standardized relative to the position of the ball at
@@ -579,11 +590,11 @@ the snap. Altogether, with `yardline_100` accounting for relative
 position of the ball on the field, we encode a significant amount of
 positional information. Admittedly, probably more could be done, but I
 think this is sufficient for capturing information about the offensive
-and defensive players that have an impact on the play.\[4\] \[5\]
+and defensive players that have an impact on the play.[4] [5]
 
 I’ll use a logistic regression model for the purpose of finding the
 probability of a play having a targeted pick route. This model
-effectively serves as a propensity score model.\[6\] I deal with the
+effectively serves as a propensity score model.[6] I deal with the
 correlation between some of the covariates (e.g. `down` and
 `yards_to_go`) by including appropriate interaction terms.
 
@@ -595,13 +606,13 @@ original data set has many more observations where the probability for a
 targeted pick play are lower (hence the gray shade falling out of the
 bounds of the chart).
 
-![viz\_prop\_probs\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_prop_probs_is_target_picked.png)
+![viz\_prop\_probs\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_prop_probs_is_target_picked.png)
 
 Below is a love plot, showing how the matching has reduced bias among
 each of the covariates. Evidently the tracking features have the
 greatest variance between the un-adjusted and adjusted data sets.
 
-![viz\_love\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_love_is_target_picked.png)
+![viz\_love\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_love_is_target_picked.png)
 
 Finally, I fit a linear regression model with EPA as the response
 variable using the same features as those in the propensity model, only
@@ -609,7 +620,7 @@ adding an indicator for whether the targeted receiver was pick or not
 (`is_target_picked`). The big thing to note is that `is_target_picked1`
 does not show up as statistically significant.
 
-![viz\_epa\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_epa_is_target_picked.png)
+![viz\_epa\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_epa_is_target_picked.png)
 
 Thus, we might conclude that whether the targeted receiver is involved
 in a pick route combination has no causal effect on EPA. This is
@@ -621,7 +632,7 @@ To provide a more apples-to-apples comparison with the t-tests performed
 before, below is an analogous table to the one shown before, only this
 time the matched data is used.
 
-![tab\_t\_test\_epa\_is\_target\_picked\_adjusted\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_t_test_epa_is_target_picked_adjusted_is_target_picked.png)
+![tab\_t\_test\_epa\_is\_target\_picked\_adjusted\_is\_target\_picked](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_is_target_picked_adjusted_is_target_picked.png)
 
 Now we find that all t-tests indicate lack of significance\~ (Previously
 there were 7 significant results.)
@@ -631,17 +642,17 @@ targeted receiver is the same at the time of the throw—I used the same
 causal approach. Below are the same plots for propensity score matching,
 standardized bias, and final regression coefficients.
 
-![viz\_prop\_probs\_has\_same\_defender](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_prop_probs_has_same_defender.png)
+![viz\_prop\_probs\_has\_same\_defender](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_prop_probs_has_same_defender.png)
 
 Note that the propensity score matching has a different distribution due
 to the change in response variable.
 
-![viz\_love\_has\_same\_defender](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_love_has_same_defender.png)
+![viz\_love\_has\_same\_defender](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_love_has_same_defender.png)
 
 The love plot has a similar look to the same plot for target pick plays,
 but the magnitude of the x-axis is notably smaller.
 
-![viz\_epa\_has\_same\_defender](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_epa_has_same_defender.png)
+![viz\_epa\_has\_same\_defender](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_epa_has_same_defender.png)
 
 The regression coefficient plot implies that the type of coverage on the
 targeted receiver does not have a causal relationship with EPA.
@@ -651,10 +662,10 @@ across most conditions, with the exception of 2. The significant results
 indicate that EPA is higher when man-to-man coverage is played on the
 targeted receiver (’`Same Defender? Y"`) and the pass is successful
 (`"EPA | Pass Successful? Y"`), and also when man-to-man coverage is
-played on a successful passes that do not target picks (`"EPA | Pass
-Successful? Y & Target Picked? N"`), even after adjustment
+played on a successful passes that do not target picks
+(`"EPA | Pass Successful? Y & Target Picked? N"`), even after adjustment
 
-![tab\_t\_test\_epa\_has\_same\_defender\_adjusted\_has\_same\_defender](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/tab_t_test_epa_has_same_defender_adjusted_has_same_defender.png)
+![tab\_t\_test\_epa\_has\_same\_defender\_adjusted\_has\_same\_defender](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_has_same_defender_adjusted_has_same_defender.png)
 
 Overall, I would say that there is sufficient evidence against the type
 of coverage on the targeted receiver having a causal effect on EPA,
@@ -671,12 +682,12 @@ Neither should be attributed to the type of coverage on the target.
 If we were to continue with the causal approach, the appropriate DAG is
 as follows.
 
-![da\_simultaneous](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/dag_simultaneous.png)
+![da\_simultaneous](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_simultaneous.png)
 
 The robustness of a causal approach that attempts to account for
 multiple backdoor pathways given a final response variable that is
 non-linear (EPA) is a little suspect to me, hence why I now resort to
-treating this as a “traditional” machine learning problem.\[7\]
+treating this as a “traditional” machine learning problem.[7]
 
 I’ll create an `{xgboost}` model that mirrors the `{nflfastR}`
 specification, adding in our terms for the two exposures and the
@@ -684,9 +695,9 @@ tracking control features discussed before. For model interpretability,
 we can plot [SHAP
 values](https://christophm.github.io/interpretable-ml-book/shapley.html).
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/shap_swarm.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/shap_swarm.png)
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/shap_agg.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/shap_agg.png)
 
 These suggest that whether a play involves a target pick and the type of
 coverage of the targeted defender are, for the most part, not very
@@ -701,11 +712,11 @@ successful.
 
 We can try to gain some insight from a tiled Partial Dependence Plot (PDP) of the two categorical features, where the contoured fill represents EPA.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/pdp_treatment.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/pdp_treatment.png)
 
 It doesn't seem to indicate much of a relationship at all. To illustrate how a PDP looks for features that do have strong relationships with the response variable (EPA), see the following plot of yards to the endzone and seconds left in the half. Empirically, we know that EPA becomes exaggerated towards the end of games and as the offense gets closer to the end zone, so it's no surprise to see high contrast in the contour near the 0 `yardline` and 0 `half_seconds` (bottom-left corner) point in the plot.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/pdp_example.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/pdp_example.png)
 -->
 
 Overall, I would say that the `{xgboost}` results agree with the causal
@@ -716,7 +727,7 @@ slight difference in how we state our findings, both undeniably contrast
 with the un-adjusted Frequentist findings of significant differences in
 EPA due to the two treatments of interest.
 
-# 4\. Application: Quantifying Individual Defensive Skill
+# 4. Application: Quantifying Individual Defensive Skill
 
 While the causal and machine learning approaches suggest that breaking
 out EPA by targeted pick play and/or type of coverage when targeted may
@@ -726,7 +737,7 @@ so, if only for descriptive purposes.
 Below is a plot of EPA for individual defenders when they are the
 assigned defender (at the time of the throw) on targeted receivers.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_defenders_intersect_adj.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_defenders_intersect_adj.png)
 
 We see some familiar names among the best in covering non-pick plays
 (red), such as Stephon Gilmore, Marlon Humphrey, and Johnathan Joseph.
@@ -734,7 +745,7 @@ Each finished top 20 in 2018 among cornerbacks and safeties in terms of
 pass breakups, according to [Sports Info
 Solutions](https://www.sisdatahub.com/leaderboards/CB).
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/sis-cb-top20-2018.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/sis-cb-top20-2018.png)
 
 Among those best at covering pick plays (blue), there seems to be more
 noise. Only Derwin James seems to match empirical expectations. On the
@@ -755,7 +766,7 @@ is different at the time of the throw (`"Same Defender? N"`) simply
 because it is less clear who should have been responsible for covering
 the targeted receiver.
 
-![](https://github.com/tonyelhabr/bdb2021-data/raw/master/figs/viz_defenders_intersect_adj_by_coverage.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_defenders_intersect_adj_by_coverage.png)
 
 So, even if our assessment is that there is no significant relationship
 (or causal relationship, in the case of our causal analysis) between
@@ -763,7 +774,7 @@ targeted pick plays and type of coverage on targets, I think these EPA
 scatters at least tell us that the methodologies for identifying picks
 and coverage are somewhat sound.
 
-# 5\. Conclusion
+# 5. Conclusion
 
 While t-tests show statistically significant magnitudes of EPA for two
 treatments—(1) target pick plays and (2) coverage on the targeted
@@ -773,42 +784,42 @@ not significant, except for perhaps that man-to-man coverage on the
 targeted receiver is more likely to result in higher EPA (good for the
 offense) given that the pass is completed. The implications of a
 traditional machine learning approach agree with the causal findings.
-Finally, despite the holistic lack of a meaningful relationship between
-EPA and the two treatments, the individual descriptive results (for both
+Finally, despite the generally insignificant relationships between EPA
+and the two treatments, the individual descriptive results (for both
 offensive and defensive players) derived from identifying pick routes
 and defensive coverage seemed to agree with anecdotal knowledge.
 
-1.  As discussed later, I refer to individual coverage of the targeted
-    receiver as “non-man” if the assigned defender for a given receiver
-    at the time of the throw is not the same as the assigned defender at
-    the time of the snap. Put another way, it’s basically anything that
-    is not distinctly man coverage, which certainly includes zone, but
-    which may also include “matchup” man coverage.
+[1] As discussed later, I refer to individual coverage of the targeted
+receiver as “non-man” if the assigned defender for a given receiver at
+the time of the throw is not the same as the assigned defender at the
+time of the snap. Put another way, it’s basically anything that is not
+distinctly man coverage, which certainly includes zone, but which may
+also include “matchup” man coverage.
 
-2.  I also experimented with using EPA and win probability added (WPA)
-    from the `{nflfastR}` package, but I ultimately found them to be
-    redundant since they lead to the same results.
+[2] I also experimented with using EPA and win probability added (WPA)
+from the `{nflfastR}` package, but I ultimately found them to be
+redundant since they lead to the same results.
 
-3.  EPA is derived from EP, taking the difference between plays.
+[3] EPA is derived from EP, taking the difference between plays.
 
-4.  Arguably there is some data leakage here since we are implicitly
-    telling the model where the targeted receiver is at the time of the
-    snap.
+[4] Arguably there is some data leakage here since we are implicitly
+telling the model where the targeted receiver is at the time of the
+snap.
 
-5.  I think I have to stay away from using intra-play features
-    (e.g. location of receiver at time of throw) since the original EPA
-    model features are at the play-level (unless I were to build out an
-    intra-play, continuous EPA model). On the other hand, the starting
-    position of players, as well as the other tracking features I’ve
-    includes, seem like fair game to me.
+[5] I think I have to stay away from using intra-play features
+(e.g. location of receiver at time of throw) since the original EPA
+model features are at the play-level (unless I were to build out an
+intra-play, continuous EPA model). On the other hand, the starting
+position of players, as well as the other tracking features I’ve
+includes, seem like fair game to me.
 
-6.  Of course, EPA is non-linear, so my choice of model may be
-    questionable. My justification is that I’ll ultimately end up using
-    linear regression with the same features after adjusting for the
-    propensity scores (fitted probabilities from the propensity score
-    model), so it makes sense to me to use a linear framework.
+[6] Of course, EPA is non-linear, so my choice of model may be
+questionable. My justification is that I’ll ultimately end up using
+linear regression with the same features after adjusting for the
+propensity scores (fitted probabilities from the propensity score
+model), so it makes sense to me to use a linear framework.
 
-7.  While I deemed regression with appropriate interactions sufficient
-    for modeling the non-linear nature of EPA, I think it becomes
-    overwhelming in this case, so I’ve resorted to a non-linear modeling
-    framework.
+[7] While I deemed regression with appropriate interactions sufficient
+for modeling the non-linear nature of EPA, I think it becomes
+overwhelming in this case, so I’ve resorted to a non-linear modeling
+framework.

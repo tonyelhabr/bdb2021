@@ -13,6 +13,8 @@ knitr::opts_chunk$set(
 )
 ```
 
+All code is available in [this GitHub repo](https://github.com/tonyelhabr/bdb2021). Basically everything in this notebook is in [this script](https://github.com/tonyelhabr/bdb2021/blob/master/data-raw/99_analyze_treatments.R)
+
 # 0. Introduction
 
 I attempt to quantify whether there is a significant relationships between play success, as measured by expected points added (EPA), when exposed to one or both of the following "treatments":
