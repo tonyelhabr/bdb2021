@@ -21,7 +21,6 @@ animate_play(
   endzone_color = NULL,
   buffer = NULL,
   nearest_defender = FALSE,
-  target_probability = FALSE,
   clip = TRUE,
   at = "end_routes",
   init_cnd = dplyr::quos(.data$frame_id == 1L),

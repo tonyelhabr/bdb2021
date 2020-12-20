@@ -102,7 +102,6 @@ animate_play <-
            endzone_color = NULL,
            buffer = NULL,
            nearest_defender = FALSE,
-           target_probability = FALSE,
            clip = TRUE,
            at = 'end_routes', # .get_valid_at_events(),
            init_cnd = dplyr::quos(.data$frame_id == 1L),
@@ -163,8 +162,13 @@ animate_play <-
         dplyr::distinct(display_name, jersey_number)
       assertthat::assert_that(nrow(target) == 1L)
     }
+
+    tracking_clipped <-
+      tracking %>%
+      clip_tracking_at_events(at = 'throw', init_cnd = dplyr::quos(.data$frame_id == 1L)) %>%
+      dplyr::arrange(game_id, play_id, nfl_id, frame_id)
     
-    if(nearest_defender | target_probability) {
+    if(nearest_defender) {
       personnel_and_rushers <- bdb2021::personnel_and_rushers
       
       personnel_and_rushers_min <-
@@ -178,15 +182,7 @@ animate_play <-
           personnel_and_rushers_min %>% 
           dplyr::mutate(rushers = purrr::map(.data$rushers, ~dplyr::select(.x, .data$nfl_id, .data$idx_closest_to_ball)))
       }
-    }
-    
-    tracking_clipped <-
-      tracking %>%
-      clip_tracking_at_events(at = 'throw', init_cnd = dplyr::quos(.data$frame_id == 1L)) %>%
-      dplyr::arrange(game_id, play_id, nfl_id, frame_id)
-    
-    if(nearest_defender) {
-
+      
       min_dists_nested_init <-
         tracking_clipped %>%
         dplyr::filter(!(.data$side == 'O' & is.na(.data$route))) %>% 
@@ -239,22 +235,7 @@ animate_play <-
         tidyr::unnest(.data$min_dists_robust)
       min_dists_robust
     }
-    
-    if(target_probability) {
-      # fit <- file.path(get_bdb_dir_data(), 'fit-tp-final.rds') %>% read_rds()
-      # fit
-      features <- 
-        generate_target_prob_features(
-          game_id = game_id,
-          play_id = play_id,
-          tracking = tracking, 
-          plays = plays, 
-          players = players
-        )
-      features_model <- features %>% prep_target_prob_data(all_frames = TRUE)
-      probs <- features_model %>% rebind_fit_probs()
-    }
-    
+
     # This is also being clipped, but later than how min distance and target prob is clipped.
     if(clip) {
       tracking <-

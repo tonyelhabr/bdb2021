@@ -7,10 +7,12 @@ data('receiver_intersections_adj', package = 'bdb2021')
 data('plays_w_pick_off_info', package = 'bdb2021')
 data('plays_w_pick_def_info', package = 'bdb2021')
 data('plays_w_pick_info', package = 'bdb2021')
-data('model_data_nflfastr', package = 'bdb2021')
+data('model_mat_nflfastr', package = 'bdb2021')
 
 plays <- import_plays()
 pbp <- import_nflfastr_pbp()
+epa_model_bdb <- import_epa_model_bdb()
+.path_figs <- partial(file.path, get_bdb_dir_figs(), ... = )
 
 # basic eda ----
 viz_epa_swarm <-
@@ -120,7 +122,7 @@ save_plot(viz_pick_play_frac)
 }
 
 # dag stuff ----
-if(FALSE) {
+
 .tidy_dag <- function(ggdag) {
   ggdag %>% 
     ggdag::tidy_dagitty() %>%
@@ -200,7 +202,7 @@ if(FALSE) {
   } else {
     suffix <- sprintf('%s%s', sep, suffix)
   }
-  ggsave(viz, filename = file.path(get_bdb_dir_figs(), sprintf('dag_%s%s.png', col, suffix)), type = 'cairo', width = 6, height = 6)
+  ggsave(viz, filename = .path_figs(sprintf('dag_%s%s.png', col, suffix)), type = 'cairo', width = 6, height = 6)
   viz
 }
 
@@ -256,7 +258,6 @@ dag_hard %>%
     title = 'DAG for estimating causal effects of\ntargeted pick route and defender coverage',
     col = 'simultaneous'
   )
-}
 
 # causal stuff ----
 .extract_x_from_fmla <- function(fmla) {
@@ -604,7 +605,7 @@ features_match_has_same_defender <- 'has_same_defender' %>% do_causal_analysis()
     suffix <- sprintf('%s%s', sep, suffix)
   }
 
-  gt::gtsave(res, filename = file.path(get_bdb_dir_figs(), sprintf('tab_t_test_%s_%s%s.png', col_value, col, suffix)))
+  gt::gtsave(res, filename = .path_figs(sprintf('tab_t_test_%s_%s%s.png', col_value, col, suffix)))
   res
 }
 
@@ -687,7 +688,7 @@ features_match_has_same_defender <- 'has_same_defender' %>% do_causal_analysis()
 }
 
 do_save_t_test_tabs <- function(plays_w_pick_info, col_trt = .get_valid_col_trt(), subtitle, suffix) {
-  .validate_col_trt(cols_trt, multiple.ok = TRUE)
+  .validate_col_trt(col_trt, several.ok = TRUE)
   
   features_simple <- 
     plays_w_pick_info %>% 
@@ -698,7 +699,7 @@ do_save_t_test_tabs <- function(plays_w_pick_info, col_trt = .get_valid_col_trt(
   cols_value <- .get_valid_col_value()
   
   crossing(
-    col = cols_trt,
+    col = col_trt,
     col_value = cols_value
   ) %>% 
     mutate(
@@ -852,7 +853,7 @@ defenders_intersect_adj_top_epa <-
   )
 defenders_intersect_adj_top_epa
 
-.common_defenders_intersect_adj_layers <- function(...) {
+.common_defenders_intersect_adj_layers <- function(..., .data) {
   list(
     ...,
     aes(y = epa_sum_FALSE, x = epa_sum_TRUE),
@@ -865,52 +866,52 @@ defenders_intersect_adj_top_epa
       aes(size = total), alpha = 0.2
     ),
     geom_point(
-      data = . %>% semi_join(defenders_intersect_adj_top_epa %>% filter(pick, top)),
+      data = .data %>% semi_join(defenders_intersect_adj_top_epa %>% filter(pick, top)),
       aes(size = total),
       show.legend = FALSE,
       color = 'dodgerblue'
     ),
     ggrepel::geom_text_repel(
-      data = . %>% semi_join(defenders_intersect_adj_top_epa %>% filter(pick, top)),
+      data = .data %>% semi_join(defenders_intersect_adj_top_epa %>% filter(pick, top)),
       aes(label = display_name),
       show.legend = FALSE,
       family = 'Karla',
       color = 'dodgerblue'
     ),
     geom_point(
-      data = . %>% semi_join(defenders_intersect_adj_top_epa %>% filter(pick, !top)),
+      data = .data %>% semi_join(defenders_intersect_adj_top_epa %>% filter(pick, !top)),
       aes(size = total),
       show.legend = FALSE,
       color = 'darkorange'
     ),
     ggrepel::geom_text_repel(
-      data = . %>% semi_join(defenders_intersect_adj_top_epa %>% filter(pick, !top)),
+      data = .data %>% semi_join(defenders_intersect_adj_top_epa %>% filter(pick, !top)),
       aes(label = display_name),
       show.legend = FALSE,
       family = 'Karla',
       color = 'darkorange'
     ),
     geom_point(
-      data = . %>% semi_join(defenders_intersect_adj_top_epa %>% filter(!pick, top)),
+      data = .data %>% semi_join(defenders_intersect_adj_top_epa %>% filter(!pick, top)),
       aes(size = total),
       show.legend = FALSE,
       color = 'indianred'
     ),
     ggrepel::geom_text_repel(
-      data = . %>% semi_join(defenders_intersect_adj_top_epa %>% filter(!pick, top)),
+      data = .data %>% semi_join(defenders_intersect_adj_top_epa %>% filter(!pick, top)),
       aes(label = display_name),
       show.legend = FALSE,
       family = 'Karla',
       color = 'indianred'
     ),
     geom_point(
-      data = . %>% semi_join(defenders_intersect_adj_top_epa %>% filter(!pick, !top)),
+      data = .data %>% semi_join(defenders_intersect_adj_top_epa %>% filter(!pick, !top)),
       aes(size = total),
       show.legend = FALSE,
       color = 'forestgreen'
     ),
     ggrepel::geom_text_repel(
-      data = . %>% semi_join(defenders_intersect_adj_top_epa %>% filter(!pick, !top)),
+      data = .data %>% semi_join(defenders_intersect_adj_top_epa %>% filter(!pick, !top)),
       aes(label = display_name),
       show.legend = FALSE,
       family = 'Karla',
@@ -922,7 +923,7 @@ defenders_intersect_adj_top_epa
 viz_defenders_intersect_adj <-
   all_defenders_intersect_adj_agg %>% 
   ggplot() +
-  .common_defenders_intersect_adj_layers() +
+  .common_defenders_intersect_adj_layers(.data = all_defenders_intersect_adj_agg ) +
   geom_text(
     aes(x = 5.1, y = 45, label = 'Best on pick plays'), color = 'dodgerblue', size = pts(14), hjust = 0
   ) +
@@ -967,19 +968,19 @@ defenders_intersect_adj_by_coverage <-
     names_from = c(has_intersect),
     values_from = c(n, frac, matches('^[ew]pa')),
     values_fill = 0
-  )
-defenders_intersect_adj_by_coverage
-
-viz_defenders_intersect_adj_by_coverage <-
-  defenders_intersect_adj_by_coverage %>% 
+  ) %>% 
   mutate(
     across(c(has_same_defender), binary_fct_to_lgl),
     across(
       has_same_defender, ~sprintf('Same Defender? %s', ifelse(.x, 'Y', 'N'))
     )
-  ) %>% 
+  )
+defenders_intersect_adj_by_coverage
+
+viz_defenders_intersect_adj_by_coverage <-
+  defenders_intersect_adj_by_coverage %>% 
   ggplot() +
-  .common_defenders_intersect_adj_layers() +
+  .common_defenders_intersect_adj_layers(.data = defenders_intersect_adj_by_coverage) +
   guides(
     size = guide_legend(title = '# of total plays', override.aes = list(alpha = 1))
   ) +
@@ -1309,8 +1310,15 @@ res_anim <-
 
 # xgboost stuff ----
 # Reference: https://bradleyboehmke.github.io/HOML/iml.html#xgboost-and-built-in-shapley-values
-.path_figs <- partial(file.path, get_bdb_dir_figs(), ... = )
 do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = NULL, subtitle = NULL) {
+  
+  .cols_control <- c('x', 'y', 'x_o', 'dist_o', 'x_d', 'dist_d')
+  .cols_trt <- 
+    c(
+      sprintf('is_target_picked%d', 0:1), 
+      sprintf('has_same_defender%d', 0:1)
+    )
+  
   # mat <- model_mat_bdb
   # fit <- epa_model_bdb
   
@@ -1433,11 +1441,10 @@ do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = NULL,
   shap_agg_by_feature
 }
 
-epa_model_bdb <- xgboost::xgb.load(path_epa_model_bdb)
 do_save_shap_plots(
   title = '{nflfastR} EPA model with added features',
   fit = epa_model_bdb,
-  mat = model_mat_bdb
+  mat = model_mat_nflfastr
 )
 
 # .f_predict_bdb_epa <- function(object, newdata) {

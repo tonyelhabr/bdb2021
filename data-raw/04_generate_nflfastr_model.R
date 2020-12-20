@@ -335,14 +335,6 @@ retrieve_nflfastr_model_data <- function(overwrite = FALSE) {
     )
 }
 
-.cols_control <- c('x', 'y', 'x_o', 'dist_o', 'x_d', 'dist_d')
-# These are actually the dummy variables, so can't use these directly with the select below.
-.cols_trt <- 
-  c(
-    sprintf('is_target_picked%d', 0:1), 
-    sprintf('has_same_defender%d', 0:1)
-  )
-
 model_data_nflfastr <-
   model_data %>% 
   inner_join(
