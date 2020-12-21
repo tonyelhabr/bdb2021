@@ -183,7 +183,7 @@ The tables that follow describe the frequency and success of targeted pick plays
 
 [^2]: I also experimented with using EPA and win probability added (WPA) from the `{nflfastR}` package, but I ultimately found them to be redundant since they lead to the same results.
 
-![(https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_is_target_picked_unadjusted.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_is_target_picked_unadjusted.png)
 
 ![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_n_is_target_picked_unadjusted.png)
 
@@ -198,11 +198,11 @@ Only 2 of the 9 t-tests show that there is a lack of a significant difference in
 
 Let's go on and break down EPA in an analogous manner, this time basing our t-tests on our second treatment of interest---the type of coverage on the targeted receiver. (Note the change in the column headers and `Characteristic` labels.)
 
-![tab_t_test_epa_has_same_defender_unadjusted](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_has_same_defender_unadjusted.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_has_same_defender_unadjusted.png)
 
 And, for reference, here are the sample sizes.
 
-![tab_t_test_n_has_same_defender_unadjusted](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_n_has_same_defender_unadjusted.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_n_has_same_defender_unadjusted.png)
 
 There are more insignificant results this time, 5 of the 9 tests. To highlight a few of the significant results:
 
@@ -216,17 +216,17 @@ Aside from the t-test implications, I wanted to point out that the sample sizes 
 
 When analyzing the relationship of our first exposure---whether the targeted receiver is involved in a pick---with a non-causal approach, we were assuming the following [directed acyclic graph (DAG)](https://en.wikipedia.org/wiki/Directed_acyclic_graph).
 
-![dag_is_target_picked_t-test](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_is_target_picked_t-test.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_is_target_picked_t-test.png)
 
 Likewise, the DAG when focusing on the second exposure---whether the targeted defender at the time of the throw is the same initial defender covering the assigned receiver---is basically the same, simply swapping out the label of the exposure node (blue). (Thus, there's no need to show it.)
 
 In the Frequentist approach, we did split out plays by pass success and the exposure that was not of primary concern, but this pretty simplistic. With our causal approach, we'll need to add some more complexity to account for [confounding](https://en.wikipedia.org/wiki/Confounding), i.e. we need to account for the fact that our exposure has a relationship with the features for the EPA model, which can bias inference.
 
-![dag_is_target_picked_wo_player_tracking](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_is_target_picked_wo_player_tracking.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_is_target_picked_wo_player_tracking.png)
 
 And, since we have tracking data, we can actually do better than that---we can account for the un-observed effects of tracking-based features on EPA. These serve as "controls" in our causal approach.
 
-![dag_is_target_picked](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_is_target_picked.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_is_target_picked.png)
 
 (Again, the DAG for the causal effect of our second exposure is identical, with the exception of the label of the exposure node.)
 
@@ -262,41 +262,41 @@ I'll use a logistic regression model for the purpose of finding the probability 
 
 The propensity scores are fed into a nearest neighbor matching algorithm to find similar plays, effectively reducing the confounding noted earlier in the DAG. The figure below illustrates the matching of treatment and control groups relative to the whole data set. The original data set has many more observations where the probability for a targeted pick play are lower (hence the gray shade falling out of the bounds of the chart).
 
-![viz_prop_probs_is_target_picked](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_prop_probs_is_target_picked.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_prop_probs_is_target_picked.png)
 
 Below is a love plot, showing how the matching has reduced bias among each of the covariates. Evidently the tracking features have the greatest variance between the un-adjusted and adjusted data sets.
 
-![viz_love_is_target_picked](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_love_is_target_picked.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_love_is_target_picked.png)
 
 Finally, I fit a linear regression model with EPA as the response variable using the same features as those in the propensity model, only adding an indicator for whether the targeted receiver was picked or not (`is_target_picked`). The big thing to note is that `is_target_picked1` does not show up as statistically significant.
 
-![viz_epa_is_target_picked](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_epa_is_target_picked.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_epa_is_target_picked.png)
 
 Thus, we might conclude that whether the targeted receiver is involved in a pick route combination has no causal effect on EPA. This is contrary to the deduction made before using just a Frequentist approach, but our causal approach is certainly more robust, so I think we should place more weighting on the result found here.
 
 To provide a more apples-to-apples comparison with the t-tests performed before, below is an analogous table to the one shown before, only this time the matched data is used.
 
-![tab_t_test_epa_is_target_picked_adjusted_is_target_picked](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_is_target_picked_adjusted_is_target_picked.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_is_target_picked_adjusted_is_target_picked.png)
 
 Now we find that all t-tests indicate lack of significance. (Previously there were 7 significant results.)
 
 For the other exposure of interest---whether the initial defender on the targeted receiver is the same at the time of the throw---I used the same causal approach. Below are the same plots for propensity score matching, standardized bias, and final regression coefficients.
 
-![viz_prop_probs_has_same_defender](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_prop_probs_has_same_defender.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_prop_probs_has_same_defender.png)
 
 Note that the propensity score matching has a different distribution due to the change in response variable.
 
-![viz_love_has_same_defender](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_love_has_same_defender.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_love_has_same_defender.png)
 
 The love plot has a similar look to the same plot for target pick plays, but the magnitude of the x-axis is notably smaller.
 
-![viz_epa_has_same_defender](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_epa_has_same_defender.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/viz_epa_has_same_defender.png)
 
 The regression coefficient plot implies that the type of coverage on the targeted receiver does not have a causal relationship with EPA.
 
 Lastly, the apples-to-apples t-test table shows lack of significance across most conditions, with the exception of 2. The significant results indicate that EPA is higher when man-to-man coverage is played on the targeted receiver ('`Same Defender? Y"`) and the pass is successful (`"EPA | Pass Successful? Y"`), and also when man-to-man coverage is played on a successful passes that do not target picks (`"EPA | Pass Successful? Y & Target Picked? N"`), even after adjustment
 
-![tab_t_test_epa_has_same_defender_adjusted_has_same_defender](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_has_same_defender_adjusted_has_same_defender.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_has_same_defender_adjusted_has_same_defender.png)
 
 Overall, I would say that there is sufficient evidence against the type of coverage on the targeted receiver having a causal effect on EPA, although it is interesting that there is some evidence for man-to-man coverage on the targeted receiver leading to higher EPA when the pass is successful. The overall lack of causal effect was perhaps foreshadowed by some of the defender play examples. In one case, a defensive lineman made a great individual play in intercepting the pass at the line of scrimmage. In another case, the QB evidently made a bad decision. Neither should be attributed to the type of coverage on the target.
 
@@ -304,7 +304,7 @@ Overall, I would say that there is sufficient evidence against the type of cover
 
 If we were to continue with the causal approach, the appropriate DAG is as follows.
 
-![da_simultaneous](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_simultaneous.png)
+![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_simultaneous.png)
 
 The robustness of a causal approach that attempts to account for multiple backdoor pathways given a final response variable that is non-linear (EPA) is a little suspect to me, hence why I now resort to treating this as a "traditional" machine learning problem.[^8](While%20I%20deemed%20regression%20with%20appropriate%20interactions%20sufficient%20for%20modeling%20the%20non-linear%20nature%20of%20EPA,%20I%20think%20it%20becomes%20overwhelming%20in%20this%20case,%20so%20I've%20resorted%20to%20a%20non-linear%20modeling%20framework.)
 
@@ -315,17 +315,6 @@ I'll create an `{xgboost}` model that mirrors the `{nflfastR}` specification, ad
 ![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/shap_agg.png)
 
 These suggest that whether a play involves a target pick and the type of coverage of the targeted defender are, for the most part, not very important for predicting EPA. I'll note that `has_same_defender1` finishes middle-of-the-pack among features in terms of SHAP, and that it's observation-level values skew slightly above 0. This somewhat agrees with what we found at the end of our causal analysis---that man-to-man coverage may indeed be related to EPA, given that the pass is successful.
-
-<!--
-
-We can try to gain some insight from a tiled Partial Dependence Plot (PDP) of the two categorical features, where the contoured fill represents EPA.
-
-![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/pdp_treatment.png)
-
-It doesn't seem to indicate much of a relationship at all. To illustrate how a PDP looks for features that do have strong relationships with the response variable (EPA), see the following plot of yards to the endzone and seconds left in the half. Empirically, we know that EPA becomes exaggerated towards the end of games and as the offense gets closer to the end zone, so it's no surprise to see high contrast in the contour near the 0 `yardline` and 0 `half_seconds` (bottom-left corner) point in the plot.
-
-![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/pdp_example.png)
--->
 
 Overall, I would say that the `{xgboost}` results agree with the causal findings. In the causal case, we say that there is no causal relationship. Here, we make a slightly weaker conclusion, simply saying that there is no significant relationship. Nonetheless, despite the slight difference in how we state our findings, both undeniably contrast with the un-adjusted Frequentist findings of significant differences in EPA due to the two treatments of interest.
 
