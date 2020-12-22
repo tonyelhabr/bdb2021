@@ -927,8 +927,8 @@ defenders_intersect_adj_top_epa
     labs(
       title = 'Aggreggate EPA when covering targeted receiver',
       caption = 'Minimum of 10 pick plays covered.',
-      x = 'EPA on non-pick plays',
-      y = 'EPA on pick plays'
+      x = 'EPA on pick plays',
+      y = 'EPA on non-pick plays'
     ) 
   )
 }

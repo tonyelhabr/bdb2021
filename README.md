@@ -463,13 +463,12 @@ difference in means at a threshold of 0.05.
     `"EPA | Pass Successful? N & Same Defender? N"` (i.e. given an
     unsuccessful pass, EPA when the targeted receiver is not covered by
     their initial defender is not significantly different on pick plays
-    versus all other passes) is best interpreted by comparing it to the
-    significant difference in its direct counterpart,
-    `"EPA | Pass Successful? N & Same Defender? N"`. The latter result
-    implies that non-man coverage has a significant relationship with
-    EPA when the pass is not successful, while the former result implies
-    that man coverage does not. Again, the real-world implication is
-    that non-man coverage is impactful.
+    compared to all other passes) is best interpreted by comparing it to
+    the significant difference for its direct counterpart,
+    `"EPA | Pass Successful? N & Same Defender? Y"`. The former implies
+    that non-man coverage does not have a significant relationship with
+    EPA when the pass is not successful, while the latter result implies
+    that man coverage does not.
 
 Let’s go on and break down EPA in an analogous manner, this time basing
 our t-tests on our second treatment of interest—the type of coverage on
@@ -491,7 +490,8 @@ highlight a few of the significant results:
     man coverage on the targeted receiver is disadvantageous for the
     defense in these cases. Anecdotally, this may imply that man
     coverage is more likely to give up big plays, which most people
-    would say without ever looking at the numbers.
+    would say without ever looking at the numbers. We’ll come back to
+    this idea later.
 
 -   There is a significant difference given that the pass is successful
     and the targeted receiver is not involved in a pick route
@@ -659,7 +659,9 @@ indicate that EPA is higher when man-to-man coverage is played on the
 targeted receiver (’`Same Defender? Y"`) and the pass is successful
 (`"EPA | Pass Successful? Y"`), and also when man-to-man coverage is
 played on a successful passes that do not target picks
-(`"EPA | Pass Successful? Y & Target Picked? N"`), even after adjustment
+(`"EPA | Pass Successful? Y & Target Picked? N"`), even after
+adjustment. Recall that the Frequentist approach also flagged these as
+significant.
 
 ![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_has_same_defender_adjusted_has_same_defender.png)
 
@@ -667,8 +669,8 @@ Overall, I would say that there is sufficient evidence against the type
 of coverage on the targeted receiver having a causal effect on EPA,
 although it is interesting that there is some evidence for man-to-man
 coverage on the targeted receiver leading to higher EPA when the pass is
-successful. The overall lack of causal effect was perhaps foreshadowed
-by some of the defender play examples. In one case, a defensive lineman
+completed. The overall lack of causal effect was perhaps foreshadowed by
+some of the defender play examples. In one case, a defensive lineman
 made a great individual play in intercepting the pass at the line of
 scrimmage. In another case, the QB evidently made a bad decision.
 Neither should be attributed to the type of coverage on the target.
@@ -700,10 +702,10 @@ These suggest that whether a play involves a target pick and the type of
 coverage of the targeted defender are, for the most part, not very
 important for predicting EPA. I’ll note that `has_same_defender1`
 finishes middle-of-the-pack among features in terms of SHAP, and that
-it’s observation-level values skew slightly above 0. This somewhat
-agrees with what we found at the end of our causal analysis—that
-man-to-man coverage may indeed be related to EPA, given that the pass is
-successful.
+it’s observation-level values skew slightly above 0. This weakly agrees
+with what we found in part of the Frequentist analysis and at the end of
+our causal analysis—that man-to-man coverage may indeed have a
+non-trivial relationship with EPA, given that the pass is successful.
 
 Overall, I would say that the `{xgboost}` results agree with the causal
 findings. In the causal case, we say that there is no causal
