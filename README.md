@@ -554,8 +554,7 @@ features, I’ll use [the features that the `{nflfastR}` expected points
 (EP) model
 uses](https://www.opensourcefootball.com/posts/2020-09-28-nflfastr-ep-wp-and-cp-models/#ep-model-features),
 with the exception of the `era` variable (since we only have one season
-of data.
-\[^3\](EPA%20is%20derived%20from%20EP,%20taking%20the%20difference%20between%20plays.)
+of data. [3]
 
 -   seconds remaining in half (`half_seconds`)
 -   yard line (`yardline_100`)
@@ -586,11 +585,11 @@ the snap. Altogether, with `yardline_100` accounting for relative
 position of the ball on the field, we encode a significant amount of
 positional information. Admittedly, probably more could be done, but I
 think this is sufficient for capturing information about the offensive
-and defensive players that have an impact on the play.\[^4\] [3]
+and defensive players that have an impact on the play.\[^4\] [4]
 
 I’ll use a logistic regression model for the purpose of finding the
 probability of a play having a targeted pick route. This model
-effectively serves as a propensity score model.[4] I deal with the
+effectively serves as a propensity score model.[5] I deal with the
 correlation between some of the covariates (e.g. `down` and
 `yards_to_go`) by including appropriate interaction terms.
 
@@ -685,8 +684,7 @@ as follows.
 The robustness of a causal approach that attempts to account for
 multiple backdoor pathways given a final response variable that is
 non-linear (EPA) is a little suspect to me, hence why I now resort to
-treating this as a “traditional” machine learning
-problem.\[^8\](While%20I%20deemed%20regression%20with%20appropriate%20interactions%20sufficient%20for%20modeling%20the%20non-linear%20nature%20of%20EPA,%20I%20think%20it%20becomes%20overwhelming%20in%20this%20case,%20so%20I’ve%20resorted%20to%20a%20non-linear%20modeling%20framework.)
+treating this as a “traditional” machine learning problem.
 
 I’ll create an `{xgboost}` model that mirrors the `{nflfastR}`
 specification, adding in our terms for the two exposures and the
@@ -788,14 +786,17 @@ also include “matchup” man coverage.
 from the `{nflfastR}` package, but I ultimately found them to be
 redundant since they lead to the same results.
 
-[3] I think I have to stay away from using intra-play features
+[3] EPA is derived from EP; it’ s simply the difference between EP
+values for plays.
+
+[4] I think I have to stay away from using intra-play features
 (e.g. location of receiver at the time of throw) since the original EPA
 model features are at the play-level (unless I were to build out an
 intra-play, continuous EPA model). On the other hand, the starting
 position of players, as well as the other tracking features I’ve
 includes, seem like fair game to me.
 
-[4] Of course, EPA is non-linear, so my choice of model may be
+[5] Of course, EPA is non-linear, so my choice of model may be
 questionable. My justification is that I’ll ultimately end up using
 linear regression with the same features after adjusting for the
 propensity scores (fitted probabilities from the propensity score

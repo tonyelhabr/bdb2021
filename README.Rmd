@@ -232,7 +232,9 @@ And, since we have tracking data, we can actually do better than that---we can a
 
 For now, we'll assume these exposures are independent, although we know that that isn't quite true. We'll come back to this in a bit.
 
-To account for confounding, I'll build a propensity score model to quantify the probability of a play involving a targeted pick play. For features, I'll use [the features that the `{nflfastR}` expected points (EP) model uses](https://www.opensourcefootball.com/posts/2020-09-28-nflfastr-ep-wp-and-cp-models/#ep-model-features), with the exception of the `era` variable (since we only have one season of data. [^3](EPA%20is%20derived%20from%20EP,%20taking%20the%20difference%20between%20plays.)
+To account for confounding, I'll build a propensity score model to quantify the probability of a play involving a targeted pick play. For features, I'll use [the features that the `{nflfastR}` expected points (EP) model uses](https://www.opensourcefootball.com/posts/2020-09-28-nflfastr-ep-wp-and-cp-models/#ep-model-features), with the exception of the `era` variable (since we only have one season of data. [^3]
+
+[^3]: EPA is derived from EP; it' s simply the difference between EP values for plays.
 
 -   seconds remaining in half (`half_seconds`)
 -   yard line (`yardline_100`)
@@ -306,7 +308,7 @@ If we were to continue with the causal approach, the appropriate DAG is as follo
 
 ![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_simultaneous.png)
 
-The robustness of a causal approach that attempts to account for multiple backdoor pathways given a final response variable that is non-linear (EPA) is a little suspect to me, hence why I now resort to treating this as a "traditional" machine learning problem.[^8](While%20I%20deemed%20regression%20with%20appropriate%20interactions%20sufficient%20for%20modeling%20the%20non-linear%20nature%20of%20EPA,%20I%20think%20it%20becomes%20overwhelming%20in%20this%20case,%20so%20I've%20resorted%20to%20a%20non-linear%20modeling%20framework.)
+The robustness of a causal approach that attempts to account for multiple backdoor pathways given a final response variable that is non-linear (EPA) is a little suspect to me, hence why I now resort to treating this as a "traditional" machine learning problem.
 
 I'll create an `{xgboost}` model that mirrors the `{nflfastR}` specification, adding in our terms for the two exposures and the tracking control features discussed before. For model interpretability, we can plot [SHAP values](https://christophm.github.io/interpretable-ml-book/shapley.html).
 
