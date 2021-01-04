@@ -468,12 +468,12 @@ difference in means at a threshold of 0.05.
     `"EPA | Pass Successful? N & Same Defender? Y"`. The former implies
     that non-man coverage does not have a significant relationship with
     EPA when the pass is not successful, while the latter result implies
-    that man coverage does not.
+    that man coverage does.
 
-Let’s go on and break down EPA in an analogous manner, this time basing
-our t-tests on our second treatment of interest—the type of coverage on
-the targeted receiver. (Note the change in the column headers and
-`Characteristic` labels.)
+Let’s go on and break down EPA and frequency in an analogous manner,
+this time basing our t-tests on our second treatment of interest—the
+type of coverage on the targeted receiver. (Note the change in the
+column headers and `Characteristic` labels.)
 
 ![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/tab_t_test_epa_has_same_defender_unadjusted.png)
 
@@ -526,13 +526,13 @@ covering the assigned receiver—is basically the same, simply swapping
 out the label of the exposure node (blue). (Thus, there’s no need to
 show it.)
 
-In the Frequentist approach, we did split out plays by pass success and
-the exposure that was not of primary concern, but this pretty
-simplistic. With our causal approach, we’ll need to add some more
-complexity to account for
-[confounding](https://en.wikipedia.org/wiki/Confounding), i.e. we need
-to account for the fact that our exposure has a relationship with the
-features for the EPA model, which can bias inference.
+In the Frequentist approach, we split out plays by pass success and the
+exposure that was not of primary concern, but this pretty simplistic.
+With our causal approach, we’ll need to add some more complexity to
+account for [confounding](https://en.wikipedia.org/wiki/Confounding),
+i.e. we need to account for the fact that our exposure has a
+relationship with the features for the EPA model, which can bias
+inference.
 
 ![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/dag_is_target_picked_wo_player_tracking.png)
 

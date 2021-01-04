@@ -385,6 +385,7 @@ if(!file.exists(path_epa_model_bdb)) {
   names(folds) <- NULL
   
   n_row <- 20
+  nrounds <- 500
   grid <- 
     dials::grid_latin_hypercube(
       dials::finalize(dials::mtry(), model_data_nflfastr),
@@ -426,9 +427,13 @@ if(!file.exists(path_epa_model_bdb)) {
 
     epa_cv_model <-
       xgboost::xgb.cv(
-        data = full_train_bdb_epa, params = params, nrounds = nrounds,
-        folds = folds, metrics = list('rmse'),
-        early_stopping_rounds = 10, print_every_n = 10
+        data = full_train_bdb_epa, 
+        params = params, 
+        nrounds = nrounds,
+        folds = folds, 
+        metrics = list('rmse'),
+        early_stopping_rounds = 10, 
+        print_every_n = 10
       )
     
     output <- params
@@ -438,7 +443,7 @@ if(!file.exists(path_epa_model_bdb)) {
     
     this_param <- bind_rows(output)
     
-    path <- .path_data('epa_cv_model_bdb.rds')
+    path <- file.path(get_bdb_dir_data(), 'epa_cv_model_bdb.rds')
     if (row == 1) {
       write_rds(this_param, path)
     } else {
