@@ -10,7 +10,7 @@ path_epa_model_bdb <- file.path('inst', 'epa_model_bdb')
 
 # Reference https://github.com/guga31bb/nflfastR-data/blob/master/models/model_data.R#L1}
 retrieve_nflfastr_model_data <- function(overwrite = FALSE) {
-  if(!file.exists(path_model_data) & !overwrite) {
+  if(file.exists(path_model_data) & !overwrite) {
     .display_info('Returning early.')
     model_data <- path_model_data %>% arrow::read_parquet()
     return(model_data)
@@ -314,6 +314,27 @@ retrieve_nflfastr_model_data <- function(overwrite = FALSE) {
   arrow::write_parquet(model_data, path_model_data)
   model_data
 }
+model_data <- retrieve_nflfastr_model_data()
+
+model_data_nflfastr <-
+  model_data %>% 
+  inner_join(
+    plays_w_pick_info %>%
+      select(
+        game_id,
+        play_id,
+        x,
+        y,
+        x_o,
+        dist_o,
+        x_d,
+        dist_d,
+        is_target_picked,
+        has_same_defender,
+        epa_bdb = epa
+      )
+  )
+usethis::use_data(model_data_nflfastr, overwrite = TRUE)
 
 .ep_model_select <- function(pbp, ...) {
   pbp %>% 
@@ -334,25 +355,6 @@ retrieve_nflfastr_model_data <- function(overwrite = FALSE) {
       def_timeouts
     )
 }
-
-model_data_nflfastr <-
-  model_data %>% 
-  inner_join(
-    plays_w_pick_info %>%
-      select(
-        game_id,
-        play_id,
-        x,
-        y,
-        x_o,
-        dist_o,
-        x_d,
-        dist_d,
-        is_target_picked,
-        has_same_defender,
-        epa_bdb = epa
-      )
-  )
 
 .bdb_model_select <- function(data, ...) {
   data %>% 

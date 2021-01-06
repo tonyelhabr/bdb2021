@@ -42,8 +42,8 @@ do_generate_features <-
   path_min_dists <- file.path(get_bdb_dir_data(), sprintf('min_dists_robust_week%d.parquet', week))
   do_min_dists <- !file.exists(path_min_dists) | overwrite_min_dists_robust
 
-  path_min_dists_target <- file.path(get_bdb_dir_data(), sprintf('min_dists_naive_target_week%d.parquet', week))
-  do_min_dists_target <- !file.exists(path_min_dists_target) | overwrite_min_dists_target
+  path_min_dists <- file.path(get_bdb_dir_data(), sprintf('min_dists_naive_week%d.parquet', week))
+  do_min_dists_target <- !file.exists(path_min_dists) | overwrite_min_dists_target
 
   path_features <- file.path(get_bdb_dir_data(), sprintf('features_week%d.parquet', week))
   # browser()
@@ -407,44 +407,41 @@ do_generate_features <-
         .data$dist_o
       )
     
-    min_dists_naive_od_target %>% arrow::write_parquet(path_min_dists_target %>% str_replace('_naive', '_naive_od'))
+    min_dists_naive_od_target %>% arrow::write_parquet(path_min_dists %>% str_replace('_naive', '_naive_od'))
     
-    min_dists_naive_d_target <-
-      frames_target %>%
-      # dplyr::filter(is_target == 1L) %>%
-      dplyr::left_join(
-        frames_o,
-        by = c('game_id', 'play_id', 'nfl_id')
-      ) %>%
-      dplyr::left_join(
-        frames_d %>%
-          dplyr::rename_with(~sprintf('%s_%s', .x, 'd'), -c(.data$game_id, .data$play_id, .data$frame_id, .data$event)),
-        by = c('game_id', 'play_id', 'frame_id', 'event')
-      ) %>%
-      dplyr::mutate(dist_d = .dist(.data$x, .data$x_d, .data$y, .data$y_d)) %>%
-      # dplyr::group_by(.data$game_id, .data$play_id, .data$frame_id, .data$event, .data$nfl_id) %>%
-      # dplyr::mutate(idx_closest = dplyr::row_number(.data$dist_d)) %>%
-      # dplyr::ungroup() %>%
-      dplyr::select(
-        .data$game_id,
-        .data$play_id,
-        .data$frame_id,
-        .data$event,
-        .data$idx_o,
-        .data$nfl_id,
-        .data$nfl_id_d,
-        .data$target_nfl_id,
-        .data$is_target,
-        .data$x,
-        .data$y,
-        .data$x_d,
-        .data$y_d,
-        .data$dist_d
-        # dplyr::matches('_d') # ,
-        # .data$idx_closest
-      )
-
-    min_dists_naive_d_target %>% arrow::write_parquet(path_min_dists_target)
+    # min_dists_naive_d_target <-
+    #   frames_target %>%
+    #   # dplyr::filter(is_target == 1L) %>%
+    #   dplyr::left_join(
+    #     frames_o,
+    #     by = c('game_id', 'play_id', 'nfl_id')
+    #   ) %>%
+    #   dplyr::left_join(
+    #     frames_d %>%
+    #       dplyr::rename_with(~sprintf('%s_%s', .x, 'd'), -c(.data$game_id, .data$play_id, .data$frame_id, .data$event)),
+    #     by = c('game_id', 'play_id', 'frame_id', 'event')
+    #   ) %>%
+    #   dplyr::mutate(dist_d = .dist(.data$x, .data$x_d, .data$y, .data$y_d)) %>%
+    #   dplyr::select(
+    #     .data$game_id,
+    #     .data$play_id,
+    #     .data$frame_id,
+    #     .data$event,
+    #     .data$idx_o,
+    #     .data$nfl_id,
+    #     .data$nfl_id_d,
+    #     .data$target_nfl_id,
+    #     .data$is_target,
+    #     .data$x,
+    #     .data$y,
+    #     .data$x_d,
+    #     .data$y_d,
+    #     .data$dist_d
+    #     # dplyr::matches('_d') # ,
+    #     # .data$idx_closest
+    #   )
+    # 
+    # min_dists_naive_d_target %>% arrow::write_parquet(path_min_dists)
   }
 
   features <-
@@ -561,13 +558,13 @@ min_dists_naive_od_target <-
 min_dists_naive_od_target
 .export_parquet(min_dists_naive_od_target)
 
-min_dists_naive_d_target <-
-  weeks %>%
-  sprintf('min_dists_naive_d_target_week%d.parquet', .) %>%
-  file.path(get_bdb_dir_data(), .) %>%
-  map_dfr(arrow::read_parquet)
-min_dists_naive_d_target
-.export_parquet(min_dists_naive_d_target)
+# min_dists_naive_d_target <-
+#   weeks %>%
+#   sprintf('min_dists_naive_d_target_week%d.parquet', .) %>%
+#   file.path(get_bdb_dir_data(), .) %>%
+#   map_dfr(arrow::read_parquet)
+# min_dists_naive_d_target
+# .export_parquet(min_dists_naive_d_target)
 # beepr::beep(3)
 
 events_end_rush <- .get_events_end_rush()

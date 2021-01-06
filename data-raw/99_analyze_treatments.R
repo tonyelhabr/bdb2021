@@ -8,6 +8,7 @@ data('plays_w_pick_off_info', package = 'bdb2021')
 data('plays_w_pick_def_info', package = 'bdb2021')
 data('plays_w_pick_info', package = 'bdb2021')
 data('model_mat_nflfastr', package = 'bdb2021')
+data('model_data_nflfastr', package = 'bdb2021')
 
 plays <- import_plays()
 pbp <- import_nflfastr_pbp()
@@ -15,6 +16,7 @@ epa_model_bdb <- import_epa_model_bdb()
 .path_figs <- partial(file.path, get_bdb_dir_figs(), ... = )
 
 # basic eda ----
+if(FALSE) {
 viz_epa_swarm <-
   plays %>% 
   mutate(
@@ -107,6 +109,7 @@ viz_pick_play_frac <-
   )
 viz_pick_play_frac
 save_plot(viz_pick_play_frac)
+}
 
 # causal analysis prep----
 .str_replace_f <- function(x, i) {
@@ -122,7 +125,7 @@ save_plot(viz_pick_play_frac)
 }
 
 # dag stuff ----
-
+if(FALSE) {
 .tidy_dag <- function(ggdag) {
   ggdag %>% 
     ggdag::tidy_dagitty() %>%
@@ -258,8 +261,10 @@ dag_hard %>%
     title = 'DAG for estimating causal effects of\ntargeted pick route and defender coverage',
     col = 'simultaneous'
   )
+}
 
 # causal stuff ----
+if(FALSE) {
 .extract_x_from_fmla <- function(fmla) {
   # browser()
   fmla[[3]] %>% 
@@ -740,6 +745,7 @@ features_match_has_same_defender_simple <-
     subtitle = 'After matching for targeted defender coverage', 
     suffix = 'adjusted_has_same_defender'
   )
+}
 
 # visualize defenders ----
 pick_plays <- plays_w_pick_def_info %>% filter(has_intersect)
@@ -853,6 +859,7 @@ defenders_intersect_adj_top_epa <-
   )
 defenders_intersect_adj_top_epa
 
+if(FALSE) {
 .common_defenders_intersect_adj_layers <- function(..., .data) {
   list(
     ...,
@@ -980,8 +987,24 @@ viz_defenders_intersect_adj_by_coverage <-
   defenders_intersect_adj_by_coverage %>% 
   ggplot() +
   .common_defenders_intersect_adj_layers(.data = defenders_intersect_adj_by_coverage) +
+  geom_text(
+    data = tibble(has_same_defender = 'Same Defender? N'),
+    aes(x = 0.1, y = 45, label = 'Best on pick plays'), color = 'dodgerblue', size = pts(11), hjust = 0
+  ) +
+  geom_text(
+    data = tibble(has_same_defender = 'Same Defender? N'),
+    aes(x = 0.1, y = 42, label = 'Worst on pick plays'), color = 'darkorange', size = pts(11), hjust = 0
+  ) +
+  geom_text(
+    data = tibble(has_same_defender = 'Same Defender? N'),
+    aes(x = 0.1, y = 39, label = 'Best on non-pick plays'), color = 'indianred', size = pts(11), hjust = 0
+  ) +
+  geom_text(
+    data = tibble(has_same_defender = 'Same Defender? N'),
+    aes(x = 0.1, y = 36, label = 'Worst on non-pick plays'), color = 'forestgreen', size = pts(11), hjust = 0
+  ) +
   labs(
-    subtitle = 'Differntiated by coverage type'
+    subtitle = 'Differentiated by coverage type'
   ) +
   facet_wrap(~has_same_defender)
 viz_defenders_intersect_adj_by_coverage
@@ -1295,10 +1318,10 @@ res_anim <-
       )
     )
   )
-
+}
 # xgboost stuff ----
 # Reference: https://bradleyboehmke.github.io/HOML/iml.html#xgboost-and-built-in-shapley-values
-do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = NULL, subtitle = NULL) {
+do_save_shap_plots <- function(fit, mat, data, suffix = NULL, sep = '_', title = NULL, subtitle = NULL) {
   
   .cols_control <- c('x', 'y', 'x_o', 'dist_o', 'x_d', 'dist_d')
   .cols_trt <- 
@@ -1307,7 +1330,8 @@ do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = NULL,
       sprintf('has_same_defender%d', 0:1)
     )
   
-  # mat <- model_mat_bdb
+  # mat <- model_mat_nflfastr
+  # data <- model_data_nflfastr
   # fit <- epa_model_bdb
   
   if(is.null(suffix)) {
@@ -1335,12 +1359,12 @@ do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = NULL,
     as.data.frame() %>%
     as_tibble() %>% 
     select(-matches('BIAS'))
-  shap_init
   
   shap <- 
     shap_init %>% 
     mutate(idx = row_number()) %>% 
-    pivot_longer(-idx, names_to = 'feature', values_to = 'shap_value')
+    bind_cols(model_data_nflfastr %>% select(epa_bdb)) %>% 
+    pivot_longer(-c(idx, epa_bdb), names_to = 'feature', values_to = 'shap_value')
   
   shap_agg_by_feature <-
     shap %>% 
@@ -1356,7 +1380,12 @@ do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = NULL,
   shap_agg_by_feature
   
   set.seed(42)
-  shap_sample <- shap %>% group_by(feature) %>% sample_frac(0.1) %>% ungroup()
+  shap_sample <- 
+    shap %>% 
+    group_by(feature) %>% 
+    sample_frac(0.1) %>%
+    ungroup() %>% 
+    mutate(prnk = percent_rank(epa_bdb))
   
   .prep_viz_data <- function(data) {
     data %>% 
@@ -1380,16 +1409,28 @@ do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = NULL,
     shap_sample %>% 
     left_join(shap_agg_by_feature %>% select(feature, shap_value_rnk)) %>% 
     .prep_viz_data() %>% 
+    mutate(scale = if_else(shap_value > 0.5, shap_value, 1 - shap_value)) %>% 
     ggplot() +
     aes(x = shap_value, y = lab) +
     ggbeeswarm::geom_quasirandom(
+      aes(color = prnk, size = scale, alpha = scale),
+      # color = '#4D4D4D',
+      # size = 1, # 0.2, 
+      # alpha = 0.3
       groupOnX = FALSE, 
-      varwidth = TRUE, 
-      color = '#4D4D4D',
-      size = 0.2, 
-      alpha = 0.3
+      varwidth = TRUE
+    ) +
+    scale_color_distiller(
+      palette = 'RdBu'
+    ) +
+    scale_size_area(max_size = 3) +
+    guides(
+      size = FALSE,
+      alpha = FALSE,
+      color = guide_legend('Normalized EPA', override.aes = list(size = 3, alpha = 1))
     ) +
     theme(
+      legend.position = 'top',
       axis.text.y = ggtext::element_markdown()
     ) +
     labs(
@@ -1398,7 +1439,7 @@ do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = NULL,
       x = 'SHAP value',
       y = NULL
     )
-  
+  # viz_shap_swarm
   save_plot(
     viz_shap_swarm,
     path = .path_figs(sprintf('shap_swarm%s.png', suffix))
@@ -1432,6 +1473,7 @@ do_save_shap_plots <- function(fit, mat, suffix = NULL, sep = '_', title = NULL,
 do_save_shap_plots(
   title = '{nflfastR} EPA model with added features',
   fit = epa_model_bdb,
+  data = model_data_nflfastr,
   mat = model_mat_nflfastr
 )
 

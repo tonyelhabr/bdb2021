@@ -364,7 +364,7 @@ import_nflfastr_pbp <- memoise::memoise({function(season = 2018) {
 #' 
 #' @export
 import_new_features <- memoise::memoise({function() {
-  file.path(get_bdb_dir_data(), 'new_features.parquet') %>% 
+  file.path(get_bdb_dir_data(), 'features.parquet') %>% 
     arrow::read_parquet()
 }})
 
@@ -372,7 +372,7 @@ import_new_features <- memoise::memoise({function() {
 #' 
 #' @export
 import_min_dists_naive_od_target <- function() {
-  file.path(get_bdb_dir_data(), 'min_dists_naive_od_target.parquet') %>%
+  file.path(get_bdb_dir_data(), 'min_dists_naive.parquet') %>%
     arrow::read_parquet() 
 }
 
