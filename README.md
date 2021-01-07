@@ -25,18 +25,21 @@ exposed to one or both of the following “treatments”:
 
 Both when using a [causal
 approach](https://en.wikipedia.org/wiki/Causal_analysis) and a more
-traditional machine learning approach, I find no evidence for targeted
-pick route combinations having a significant effect on play success.
-This contrasts with the result found from simply comparing the
-difference in EPA means with
+traditional predictive approach (with
+[{xgboost}](https://cran.r-project.org/web/packages/xgboost/index.html)
+and [SHAP
+values](https://christophm.github.io/interpretable-ml-book/shap.html)),
+I find no evidence for targeted pick route combinations having a
+significant effect on play success. This contrasts with the result found
+from simply comparing the difference in EPA means with
 [t-tests](https://en.wikipedia.org/wiki/Student%27s_t-test), i.e. a
 [Frequentist
 approach](https://en.wikipedia.org/wiki/Frequentist_inference).
 
 Likewise, when investigating the role the targeted defender in pick
-plays, I find that the causal and machine learning approaches agree with
-one another, but disagree with the un-adjusted Frequentist implication.
-The causal and machine learning approaches indicate that there may be a
+plays, I find that the causal and predictive approaches agree with one
+another, but disagree with the un-adjusted Frequentist implication. The
+causal and predictive approaches indicate that there may be a
 significant relationship between EPA and the type of coverage on the
 targeted receiver given that the pass is completed, but otherwise
 suggest that the type of coverage doesn’t have a significant
@@ -88,7 +91,7 @@ pick plays.)
 
 3.  Perform analyses of targeted picks plays and individual coverage of
     targeted receivers using (1) a Frequentist approach, (2) a causal
-    approach, and a more traditional machine learning approach.
+    approach, and a more traditional predictive approach.
 
 4.  Quantify individual defensive back success when involved in pick
     routes.
@@ -674,7 +677,7 @@ made a great individual play in intercepting the pass at the line of
 scrimmage. In another case, the QB evidently made a bad decision.
 Neither should be attributed to the type of coverage on the target.
 
-## Machine Learning Approach
+## Predictive Approach
 
 If we were to continue with the causal approach, the appropriate DAG is
 as follows.
@@ -689,8 +692,7 @@ treating this as a “traditional” machine learning problem.
 I’ll create an `{xgboost}` model that mirrors the `{nflfastR}`
 specification, adding in our terms for the two exposures and the
 tracking control features discussed before. For model interpretability,
-we can plot [SHAP
-values](https://christophm.github.io/interpretable-ml-book/shapley.html).
+we can plot SHAP values.
 
 ![](https://github.com/tonyelhabr/bdb2021/raw/master/inst/shap_swarm.png)
 
@@ -715,10 +717,10 @@ EPA due to the two treatments of interest.
 
 # 4. Application: Quantifying Individual Defensive Skill
 
-While the causal and machine learning approaches suggest that breaking
-out EPA by targeted pick play and/or type of coverage when targeted may
-only lead to noisy deductions, I think it might still be useful to do
-so, if only for descriptive purposes.
+While the causal and predictive approaches suggest that breaking out EPA
+by targeted pick play and/or type of coverage when targeted may only
+lead to noisy deductions, I think it might still be useful to do so, if
+only for descriptive purposes.
 
 Below is a plot of EPA for individual defenders when they are the
 assigned defender (at the time of the throw) on targeted receivers.
@@ -769,11 +771,11 @@ features with a causal approach shows that these differences are mostly
 not significant, except for perhaps that man-to-man coverage on the
 targeted receiver is more likely to result in higher EPA (good for the
 offense) given that the pass is completed. The implications of a
-traditional machine learning approach agree with the causal findings.
-Finally, despite the generally insignificant relationships between EPA
-and the two treatments, the individual descriptive results (for both
-offensive and defensive players) derived from identifying pick routes
-and defensive coverage seemed to agree with anecdotal knowledge.
+traditional predictive approach agree with the causal findings. Finally,
+despite the generally insignificant relationships between EPA and the
+two treatments, the individual descriptive results (for both offensive
+and defensive players) derived from identifying pick routes and
+defensive coverage seemed to agree with anecdotal knowledge.
 
 [1] As discussed later, I refer to individual coverage of the targeted
 receiver as “non-man” if the assigned defender for a given receiver at

@@ -39,10 +39,10 @@ do_generate_features <-
            overwrite_min_dists_target = TRUE,
            ...) {
     
-  path_min_dists <- file.path(get_bdb_dir_data(), sprintf('min_dists_robust_week%d.parquet', week))
-  do_min_dists <- !file.exists(path_min_dists) | overwrite_min_dists_robust
+  path_min_dists_robust <- file.path(get_bdb_dir_data(), sprintf('min_dists_robust_week%d.parquet', week))
+  do_min_dists_robust <- !file.exists(path_min_dists) | overwrite_min_dists_robust
 
-  path_min_dists <- file.path(get_bdb_dir_data(), sprintf('min_dists_naive_week%d.parquet', week))
+  path_min_dists_naive <- file.path(get_bdb_dir_data(), sprintf('min_dists_naive_week%d.parquet', week))
   do_min_dists_target <- !file.exists(path_min_dists) | overwrite_min_dists_target
 
   path_features <- file.path(get_bdb_dir_data(), sprintf('features_week%d.parquet', week))
@@ -54,9 +54,10 @@ do_generate_features <-
     return(features)
   }
 
-  if(!do_min_dists) {
-    .display_info('Importing pre-calculated min dist data for {week} at {Sys.time()}.')
-    min_dists_robust <- path_min_dists %>% arrow::read_parquet()
+  do_min_dists_robust <- !file.exists(path_min_dists_robust) | overwrite_min_dists_robust
+  if(!do_min_dists_robust) {
+    .display_info('Importing pre-calculated min dist robust data for {week} at {Sys.time()}.')
+    min_dists_robust <- path_min_dists %>% read_rds()
   }
 
   .display_info('Generating features for week {week} at {Sys.time()}.')
@@ -205,7 +206,7 @@ do_generate_features <-
     )
   frames_target
 
-  if(do_min_dists) {
+  if(do_min_dists_robust) {
 
     frames_target_idx_o <-
       frames_target %>%
@@ -279,7 +280,8 @@ do_generate_features <-
         frames_target_idx_o,
         by = c('game_id', 'play_id')
       )
-    min_dists_robust %>% arrow::write_parquet(path_min_dists)
+    # min_dists_robust %>% arrow::write_parquet(path_min_dists)
+    min_dists_robust %>% write_rds(path_min_dists_robust)
 
   }
 
@@ -407,41 +409,37 @@ do_generate_features <-
         .data$dist_o
       )
     
-    min_dists_naive_od_target %>% arrow::write_parquet(path_min_dists %>% str_replace('_naive', '_naive_od'))
+    min_dists_naive_od_target %>% arrow::write_parquet(path_min_dists_target)
     
-    # min_dists_naive_d_target <-
-    #   frames_target %>%
-    #   # dplyr::filter(is_target == 1L) %>%
-    #   dplyr::left_join(
-    #     frames_o,
-    #     by = c('game_id', 'play_id', 'nfl_id')
-    #   ) %>%
-    #   dplyr::left_join(
-    #     frames_d %>%
-    #       dplyr::rename_with(~sprintf('%s_%s', .x, 'd'), -c(.data$game_id, .data$play_id, .data$frame_id, .data$event)),
-    #     by = c('game_id', 'play_id', 'frame_id', 'event')
-    #   ) %>%
-    #   dplyr::mutate(dist_d = .dist(.data$x, .data$x_d, .data$y, .data$y_d)) %>%
-    #   dplyr::select(
-    #     .data$game_id,
-    #     .data$play_id,
-    #     .data$frame_id,
-    #     .data$event,
-    #     .data$idx_o,
-    #     .data$nfl_id,
-    #     .data$nfl_id_d,
-    #     .data$target_nfl_id,
-    #     .data$is_target,
-    #     .data$x,
-    #     .data$y,
-    #     .data$x_d,
-    #     .data$y_d,
-    #     .data$dist_d
-    #     # dplyr::matches('_d') # ,
-    #     # .data$idx_closest
-    #   )
-    # 
-    # min_dists_naive_d_target %>% arrow::write_parquet(path_min_dists)
+    min_dists_naive_d_target <-
+      frames_target %>%
+      # # dplyr::filter(is_target == 1L) %>%
+      # dplyr::left_join(
+      #   frames_o,
+      #   by = c('game_id', 'play_id', 'nfl_id')
+      # ) %>%
+      dplyr::left_join(
+        frames_d %>%
+          dplyr::rename_with(~sprintf('%s_%s', .x, 'd'), -c(.data$game_id, .data$play_id, .data$frame_id, .data$event)),
+        by = c('game_id', 'play_id', 'frame_id', 'event')
+      ) %>%
+      dplyr::mutate(dist_d = .dist(.data$x, .data$x_d, .data$y, .data$y_d)) %>%
+      dplyr::select(
+        .data$game_id,
+        .data$play_id,
+        .data$frame_id,
+        .data$event,
+        .data$idx_o,
+        .data$nfl_id,
+        .data$nfl_id_d,
+        .data$target_nfl_id,
+        .data$is_target,
+        .data$x,
+        .data$y,
+        .data$x_d,
+        .data$y_d,
+        .data$dist_d,
+      )
   }
 
   features <-
